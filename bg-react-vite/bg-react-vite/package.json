@@ -1,19 +1,27 @@
 {
   "name": "bg-staff-portal",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"vite\" \"node --watch server/index.js\"",
     "build": "vite build",
+    "start": "node server/index.js",
     "preview": "vite preview"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "express": "^4.21.0",
+    "pg": "^8.13.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "concurrently": "^9.0.0"
   }
 }
