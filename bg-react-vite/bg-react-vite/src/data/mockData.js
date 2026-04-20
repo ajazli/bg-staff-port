@@ -1,4 +1,16 @@
-export const LEAVE_COLS = ['Annual leave', 'Medical leave', 'PH off in lieu', 'Emergency leave']
+export const LEAVE_TYPES = [
+  { id: 'Annual Leave',          label: 'Annual Leave',          requiresFile: false, color: '#43a047', defaultDays: 14 },
+  { id: 'Sick Leave',            label: 'Sick Leave (MC)',        requiresFile: true,  color: '#e53935', defaultDays: 14 },
+  { id: 'Hospitalisation Leave', label: 'Hospitalisation Leave', requiresFile: true,  color: '#d81b60', defaultDays: 60 },
+  { id: 'Childcare Leave',       label: 'Childcare Leave',       requiresFile: false, color: '#8e24aa', defaultDays: 6  },
+  { id: 'Maternity Leave',       label: 'Maternity Leave',       requiresFile: false, color: '#fb8c00', defaultDays: 112 },
+  { id: 'Paternity Leave',       label: 'Paternity Leave',       requiresFile: false, color: '#f4511e', defaultDays: 14 },
+  { id: 'NS Leave',              label: 'NS Leave',              requiresFile: true,  color: '#6d4c41', defaultDays: 0  },
+  { id: 'Compassionate Leave',   label: 'Compassionate Leave',   requiresFile: true,  color: '#546e7a', defaultDays: 3  },
+  { id: 'Unpaid Leave',          label: 'Unpaid Leave',          requiresFile: false, color: '#757575', defaultDays: 0  },
+  { id: 'PH Off-in-Lieu',        label: 'PH Off-in-Lieu',        requiresFile: false, color: '#00acc1', defaultDays: 0  },
+]
+
 export const WORKDAY_OPTIONS = [
   { value: 1, label: 'Mon' },
   { value: 2, label: 'Tue' },
@@ -18,50 +30,90 @@ export const SG_PUBLIC_HOLIDAYS = {
   '2026-05-01': { name: 'Labour Day' },
   '2026-05-27': { name: 'Hari Raya Haji' },
   '2026-05-31': { name: 'Vesak Day' },
-  '2026-06-01': { name: 'Vesak Day (day in lieu)' },
+  '2026-06-01': { name: 'Vesak Day (in lieu)' },
   '2026-08-09': { name: 'National Day' },
-  '2026-08-10': { name: 'National Day (day in lieu)' },
+  '2026-08-10': { name: 'National Day (in lieu)' },
   '2026-11-08': { name: 'Deepavali' },
-  '2026-11-09': { name: 'Deepavali (day in lieu)' },
+  '2026-11-09': { name: 'Deepavali (in lieu)' },
   '2026-12-25': { name: 'Christmas Day' },
+}
+
+function defaultBalances() {
+  return Object.fromEntries(LEAVE_TYPES.map((t) => [t.id, { total: t.defaultDays, used: 0 }]))
 }
 
 export const initialData = {
   branches: [
-    { id: 'b1', name: 'East Coast', lat: null, lng: null, radius: 150 },
-    { id: 'b2', name: 'Lor Kilat', lat: null, lng: null, radius: 150 },
-    { id: 'b3', name: 'New Branch', lat: null, lng: null, radius: 150 },
+    { id: 'b1', name: 'East Coast', lat: 1.30215, lng: 103.90879, radius: 100, address: '380 E Coast Rd, Singapore 428986', color: '#5b7fb8' },
+    { id: 'b2', name: 'Kilat',      lat: 1.33968, lng: 103.77606, radius: 100, address: '19 Lor Kilat, #01-02, Singapore 598120', color: '#43a047' },
   ],
   users: {
     alice: {
-      name: 'Alice Tan', initials: 'AT', role: 'staff', password: 'pass123', mustSetPw: false,
-      branchIds: ['b1', 'b2'], expectedStart: '09:00', expectedEnd: '18:00', workDays: [1,2,3,4,5], memo: ''
+      name: 'Alice Tan', initials: 'AT', role: 'team_lead',
+      password: 'pass123', mustSetPw: false,
+      branchIds: ['b1', 'b2'], reportsTo: 'admin',
+      expectedStart: '09:00', expectedEnd: '18:00',
+      workDays: [1, 2, 3, 4, 5], memo: '',
     },
     bob: {
-      name: 'Bob Lim', initials: 'BL', role: 'staff', password: null, mustSetPw: true,
-      branchIds: ['b2'], expectedStart: '09:00', expectedEnd: '18:00', workDays: [1,2,3,4,5], memo: ''
+      name: 'Bob Lim', initials: 'BL', role: 'staff',
+      password: null, mustSetPw: true,
+      branchIds: ['b2'], reportsTo: 'alice',
+      expectedStart: '09:00', expectedEnd: '18:00',
+      workDays: [1, 2, 3, 4, 5], memo: '',
+    },
+    carol: {
+      name: 'Carol Ng', initials: 'CN', role: 'staff',
+      password: 'carol123', mustSetPw: false,
+      branchIds: ['b1'], reportsTo: 'alice',
+      expectedStart: '09:00', expectedEnd: '18:00',
+      workDays: [1, 2, 3, 4, 5], memo: '',
     },
     admin: {
-      name: 'Admin', initials: 'AD', role: 'admin', password: 'admin123', mustSetPw: false,
-      branchIds: [], expectedStart: '', expectedEnd: '', workDays: [1,2,3,4,5], memo: ''
+      name: 'Admin', initials: 'AD', role: 'admin',
+      password: 'admin123', mustSetPw: false,
+      branchIds: [], reportsTo: null,
+      expectedStart: '', expectedEnd: '',
+      workDays: [1, 2, 3, 4, 5], memo: '',
     },
   },
   attendance: {
     alice: [
       { date: '2026-04-18', in: '09:02', out: '18:05', hours: '9h 3m', status: 'complete', branchId: 'b1', branchName: 'East Coast', locOk: true },
-      { date: '2026-04-17', in: '08:55', out: '18:00', hours: '9h 5m', status: 'complete', branchId: 'b2', branchName: 'Lor Kilat', locOk: true },
+      { date: '2026-04-17', in: '08:55', out: '18:00', hours: '9h 5m', status: 'complete', branchId: 'b2', branchName: 'Kilat',      locOk: true },
     ],
-    bob: [],
+    bob:   [],
+    carol: [],
     admin: [],
   },
   leaves: {
-    alice: [{ type: 'Annual leave', start: '2026-05-01', end: '2026-05-03', days: 3, reason: 'Family trip', status: 'approved' }],
-    bob: [],
+    alice: [{ type: 'Annual Leave', start: '2026-05-01', end: '2026-05-03', days: 3, reason: 'Family trip', status: 'approved', attachmentName: '', attachmentUrl: '' }],
+    bob:   [],
+    carol: [],
     admin: [],
   },
   balances: {
-    alice: { 'Annual leave': { total: 14, used: 3 }, 'Medical leave': { total: 14, used: 0 }, 'PH off in lieu': { total: 0, used: 0 }, 'Emergency leave': { total: 3, used: 0 } },
-    bob: { 'Annual leave': { total: 14, used: 0 }, 'Medical leave': { total: 14, used: 0 }, 'PH off in lieu': { total: 0, used: 0 }, 'Emergency leave': { total: 3, used: 0 } },
-    admin: { 'Annual leave': { total: 14, used: 0 }, 'Medical leave': { total: 14, used: 0 }, 'PH off in lieu': { total: 0, used: 0 }, 'Emergency leave': { total: 3, used: 0 } },
+    alice: { ...defaultBalances(), 'Annual Leave': { total: 14, used: 3 } },
+    bob:   defaultBalances(),
+    carol: defaultBalances(),
+    admin: defaultBalances(),
   },
+  shiftTemplates: [
+    { id: 'st1', name: 'Morning',   startTime: '07:00', endTime: '15:00', color: '#FFB74D' },
+    { id: 'st2', name: 'Afternoon', startTime: '12:00', endTime: '20:00', color: '#4DB6AC' },
+    { id: 'st3', name: 'Full Day',  startTime: '09:00', endTime: '18:00', color: '#7986CB' },
+  ],
+  schedules: {
+    alice: [
+      { id: 'sch1', date: '2026-04-21', branchId: 'b1', templateId: 'st3', startTime: '09:00', endTime: '18:00', note: '' },
+      { id: 'sch2', date: '2026-04-22', branchId: 'b2', templateId: 'st1', startTime: '07:00', endTime: '15:00', note: '' },
+    ],
+    bob:   [],
+    carol: [],
+    admin: [],
+  },
+  calendarEvents: [
+    { id: 'evt1', title: 'Team Meeting', date: '2026-04-22', color: '#AB47BC', createdBy: 'admin' },
+  ],
+  activeSessions: {},
 }

@@ -1,108 +1,99 @@
 import { useEffect, useMemo, useState } from 'react'
-import { initialData, LEAVE_COLS, SG_PUBLIC_HOLIDAYS, WORKDAY_OPTIONS } from '../data/mockData'
+import { initialData, LEAVE_TYPES, SG_PUBLIC_HOLIDAYS, WORKDAY_OPTIONS } from '../data/mockData'
+import { genId, localDateToStr, parseLocalDate, timeStrToMinutes } from '../utils'
 
-const storageKey = 'bg-staff-react-vite-state'
-
-const clone = (value) => JSON.parse(JSON.stringify(value))
+const STORAGE_KEY = 'bg-staff-react-vite-v2'
 const DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5]
 
-function parseLocalDate(dateStr) {
-  return dateStr ? new Date(`${dateStr}T00:00:00`) : null
-}
-
-function localDateToStr(dt) {
-  const y = dt.getFullYear()
-  const m = String(dt.getMonth() + 1).padStart(2, '0')
-  const d = String(dt.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-function timeStrToMinutes(str) {
-  if (!str || !/^\d{2}:\d{2}$/.test(str)) return null
-  const [h, m] = str.split(':').map(Number)
-  return h * 60 + m
-}
+const clone = (v) => JSON.parse(JSON.stringify(v))
 
 function seedState() {
-  const saved = localStorage.getItem(storageKey)
-  return saved ? JSON.parse(saved) : clone(initialData)
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    return saved ? JSON.parse(saved) : clone(initialData)
+  } catch {
+    return clone(initialData)
+  }
+}
+
+function ensureUserBalance(uid, db) {
+  if (!db.balances[uid]) db.balances[uid] = {}
+  LEAVE_TYPES.forEach((t) => {
+    if (!db.balances[uid][t.id]) db.balances[uid][t.id] = { total: t.defaultDays, used: 0 }
+  })
+}
+
+function getUserWorkDays(uid, db) {
+  const days = db.users[uid]?.workDays
+  return Array.isArray(days) && days.length ? days.map(Number) : [...DEFAULT_WORK_DAYS]
+}
+
+function isScheduledWorkDay(uid, dateStr, db) {
+  const dt = parseLocalDate(dateStr)
+  if (!dt) return false
+  return getUserWorkDays(uid, db).includes(dt.getDay())
+}
+
+function applyAttendanceTiming(uid, record, db) {
+  const user = db.users[uid]
+  const workDay = isScheduledWorkDay(uid, record.date, db)
+  record.expectedStart = workDay ? user?.expectedStart || '' : ''
+  record.expectedEnd   = workDay ? user?.expectedEnd   || '' : ''
+
+  const inMins      = timeStrToMinutes(record.in)
+  const expStartMin = timeStrToMinutes(record.expectedStart)
+  record.lateMinutes = inMins !== null && expStartMin !== null ? Math.max(0, inMins - expStartMin) : 0
+  record.isLate      = record.lateMinutes > 0
+
+  const outMins    = timeStrToMinutes(record.out)
+  const expEndMin  = timeStrToMinutes(record.expectedEnd)
+  record.earlyLeaveMinutes = outMins !== null && expEndMin !== null ? Math.max(0, expEndMin - outMins) : 0
+  record.leftEarly         = record.earlyLeaveMinutes > 0
+  record.overtimeMinutes   = outMins !== null && expEndMin !== null ? Math.max(0, outMins - expEndMin) : 0
+  record.didOvertime        = record.overtimeMinutes > 0
+}
+
+function creditPhOffInLieuIfNeeded(uid, record, db) {
+  ensureUserBalance(uid, db)
+  const ph = SG_PUBLIC_HOLIDAYS[record.date]
+  if (!ph) { record.phName = ''; return false }
+  record.phName = ph.name
+  if (!isScheduledWorkDay(uid, record.date, db)) { record.phCreditAdded = false; record.phCreditSkipped = true; return false }
+  if (record.phCreditAdded) return false
+  record.phCreditAdded = true
+  record.phCreditSkipped = false
+  db.balances[uid]['PH Off-in-Lieu'].total += 1
+  return true
 }
 
 export function usePortalState() {
-  const [db, setDb] = useState(seedState)
+  const [db, setDb]                   = useState(seedState)
   const [currentUserId, setCurrentUserId] = useState(null)
-  const [clockSession, setClockSession] = useState({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
+  const [clockSession, setClockSession]   = useState({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
 
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(db))
-  }, [db])
+  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(db)) }, [db])
 
-  const ensureUserBalance = (uid, nextDb) => {
-    const target = nextDb ?? db
-    if (!target.balances[uid]) target.balances[uid] = {}
-    LEAVE_COLS.forEach((col) => {
-      if (!target.balances[uid][col]) target.balances[uid][col] = { total: 0, used: 0 }
-    })
-  }
-
-  const getUserWorkDays = (uid, sourceDb = db) => {
-    const days = sourceDb.users[uid]?.workDays
-    return Array.isArray(days) && days.length ? days.map(Number) : [...DEFAULT_WORK_DAYS]
-  }
-
-  const isScheduledWorkDay = (uid, dateStr, sourceDb = db) => {
-    const dt = parseLocalDate(dateStr)
-    if (!dt) return false
-    return getUserWorkDays(uid, sourceDb).includes(dt.getDay())
-  }
-
-  const applyAttendanceTiming = (uid, record, sourceDb = db) => {
-    const user = sourceDb.users[uid]
-    const expectedStart = isScheduledWorkDay(uid, record.date, sourceDb) ? user?.expectedStart || '' : ''
-    const expectedEnd = isScheduledWorkDay(uid, record.date, sourceDb) ? user?.expectedEnd || '' : ''
-    record.expectedStart = expectedStart
-    record.expectedEnd = expectedEnd
-
-    const inMins = timeStrToMinutes(record.in)
-    const expStartMins = timeStrToMinutes(expectedStart)
-    record.lateMinutes = inMins !== null && expStartMins !== null ? Math.max(0, inMins - expStartMins) : 0
-    record.isLate = record.lateMinutes > 0
-
-    const outMins = timeStrToMinutes(record.out)
-    const expEndMins = timeStrToMinutes(expectedEnd)
-    record.earlyLeaveMinutes = outMins !== null && expEndMins !== null ? Math.max(0, expEndMins - outMins) : 0
-    record.leftEarly = record.earlyLeaveMinutes > 0
-    record.overtimeMinutes = outMins !== null && expEndMins !== null ? Math.max(0, outMins - expEndMins) : 0
-    record.didOvertime = record.overtimeMinutes > 0
-  }
-
-  const creditPhOffInLieuIfNeeded = (uid, record, sourceDb = db) => {
-    ensureUserBalance(uid, sourceDb)
-    const ph = SG_PUBLIC_HOLIDAYS[record.date]
-    if (!ph) {
-      record.phName = ''
-      return false
-    }
-    record.phName = ph.name
-    if (!isScheduledWorkDay(uid, record.date, sourceDb)) {
-      record.phCreditAdded = false
-      record.phCreditSkipped = true
-      return false
-    }
-    if (record.phCreditAdded) return false
-    record.phCreditAdded = true
-    record.phCreditSkipped = false
-    sourceDb.balances[uid]['PH off in lieu'].total += 1
-    return true
-  }
-
+  // Re-compute attendance timing on first mount
   useEffect(() => {
     setDb((prev) => {
       const next = clone(prev)
+      if (!next.activeSessions)  next.activeSessions  = {}
+      if (!next.calendarEvents)  next.calendarEvents  = []
+      if (!next.shiftTemplates)  next.shiftTemplates  = clone(initialData.shiftTemplates)
+      if (!next.schedules)       next.schedules       = {}
       Object.entries(next.attendance).forEach(([uid, records]) => {
-        records.forEach((record) => {
-          applyAttendanceTiming(uid, record, next)
-          creditPhOffInLieuIfNeeded(uid, record, next)
+        records.forEach((rec) => {
+          applyAttendanceTiming(uid, rec, next)
+          creditPhOffInLieuIfNeeded(uid, rec, next)
+        })
+      })
+      // Migrate old leave type names
+      Object.entries(next.leaves).forEach(([, records]) => {
+        records.forEach((rec) => {
+          if (rec.type === 'PH off in lieu') rec.type = 'PH Off-in-Lieu'
+          if (rec.type === 'Medical leave')  rec.type = 'Sick Leave'
+          if (rec.type === 'Annual leave')   rec.type = 'Annual Leave'
+          if (rec.type === 'Emergency leave') rec.type = 'Compassionate Leave'
         })
       })
       return next
@@ -111,11 +102,12 @@ export function usePortalState() {
 
   const currentUser = currentUserId ? db.users[currentUserId] : null
 
+  // ─── helpers ───────────────────────────────────────────────────────────────
   const helpers = useMemo(() => ({
     fmtDate: (d) => {
       if (!d) return '—'
       const [y, m, day] = d.split('-')
-      const mn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+      const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
       return `${day} ${mn[Number(m) - 1]} ${y}`
     },
     cap: (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : ''),
@@ -136,8 +128,35 @@ export function usePortalState() {
       return badges
     },
     getUserWorkDays: (uid) => getUserWorkDays(uid, db),
+    // Returns direct reports of uid
+    getDirectReports: (uid) =>
+      Object.entries(db.users)
+        .filter(([id, u]) => u.reportsTo === uid && id !== uid)
+        .map(([id, u]) => ({ id, ...u })),
+    // Returns all subordinates (recursive) of uid
+    getAllSubordinates: (uid) => {
+      const result = []
+      const queue = [uid]
+      while (queue.length) {
+        const cur = queue.shift()
+        Object.entries(db.users).forEach(([id, u]) => {
+          if (u.reportsTo === cur && id !== uid) {
+            result.push(id)
+            queue.push(id)
+          }
+        })
+      }
+      return result
+    },
+    getLeaveType: (id) => LEAVE_TYPES.find((t) => t.id === id) || null,
+    getShiftTemplate: (id) => db.shiftTemplates?.find((t) => t.id === id) || null,
+    getTodayShift: (uid) => {
+      const today = localDateToStr(new Date())
+      return (db.schedules?.[uid] || []).find((s) => s.date === today) || null
+    },
   }), [db])
 
+  // ─── auth ──────────────────────────────────────────────────────────────────
   const login = (username, password) => {
     const user = db.users[username.trim().toLowerCase()]
     if (!user) return { ok: false, error: 'Incorrect username or password.' }
@@ -162,51 +181,63 @@ export function usePortalState() {
     setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
   }
 
-  const clockIn = (branchId) => {
-    const branch = db.branches.find((item) => item.id === branchId) || db.branches[0]
-    setClockSession({ active: true, startedAt: new Date().toISOString(), branchId: branch.id, branchName: branch.name, locOk: true })
+  // ─── clock ─────────────────────────────────────────────────────────────────
+  const clockIn = (branchId, { locOk = false } = {}) => {
+    const branch = db.branches.find((b) => b.id === branchId) || db.branches[0]
+    const session = { startedAt: new Date().toISOString(), branchId: branch.id, branchName: branch.name, locOk }
+    setClockSession({ active: true, ...session })
+    setDb((prev) => {
+      const next = clone(prev)
+      if (!next.activeSessions) next.activeSessions = {}
+      next.activeSessions[currentUserId] = session
+      return next
+    })
   }
 
   const clockOut = () => {
     if (!clockSession.active || !currentUserId) return { phCredited: false, phName: '' }
-    const startedAt = new Date(clockSession.startedAt)
+    const startedAt  = new Date(clockSession.startedAt)
     const finishedAt = new Date()
     const diff = finishedAt - startedAt
-    const hrs = Math.floor(diff / 3600000)
+    const hrs  = Math.floor(diff / 3600000)
     const mins = Math.floor((diff % 3600000) / 60000)
     const rec = {
-      date: localDateToStr(startedAt),
-      in: startedAt.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      out: finishedAt.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false }),
-      hours: `${hrs}h ${mins}m`,
-      status: 'complete',
-      branchId: clockSession.branchId,
+      date:       localDateToStr(startedAt),
+      in:         startedAt.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      out:        finishedAt.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      hours:      `${hrs}h ${mins}m`,
+      status:     'complete',
+      branchId:   clockSession.branchId,
       branchName: clockSession.branchName,
-      locOk: clockSession.locOk,
+      locOk:      clockSession.locOk,
     }
-
     let phCredited = false
     let phName = ''
-
     setDb((prev) => {
       const next = clone(prev)
       applyAttendanceTiming(currentUserId, rec, next)
       next.attendance[currentUserId] = [rec, ...(next.attendance[currentUserId] || [])]
       phCredited = creditPhOffInLieuIfNeeded(currentUserId, rec, next)
       phName = rec.phName || ''
+      if (!next.activeSessions) next.activeSessions = {}
+      delete next.activeSessions[currentUserId]
       return next
     })
-
     setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
     return { phCredited, phName }
   }
 
+  // ─── leave ─────────────────────────────────────────────────────────────────
   const submitLeave = ({ type, start, end, reason, attachmentName = '', attachmentUrl = '' }) => {
     if (!currentUserId) return
     const days = Math.round((parseLocalDate(end) - parseLocalDate(start)) / 86400000) + 1
     setDb((prev) => {
       const next = clone(prev)
-      next.leaves[currentUserId] = [{ type, start, end, days, reason: reason || '—', attachmentName, attachmentUrl, status: 'pending' }, ...(next.leaves[currentUserId] || [])]
+      if (!next.leaves[currentUserId]) next.leaves[currentUserId] = []
+      next.leaves[currentUserId] = [
+        { type, start, end, days, reason: reason || '—', attachmentName, attachmentUrl, status: 'pending' },
+        ...next.leaves[currentUserId],
+      ]
       return next
     })
   }
@@ -226,8 +257,37 @@ export function usePortalState() {
       const prevStatus = rec.status
       rec.status = status
       ensureUserBalance(uid, next)
-      if (prevStatus !== 'approved' && status === 'approved' && next.balances[uid][rec.type]) next.balances[uid][rec.type].used += Number(rec.days) || 0
-      if (prevStatus === 'approved' && status !== 'approved' && next.balances[uid][rec.type]) next.balances[uid][rec.type].used = Math.max(0, next.balances[uid][rec.type].used - (Number(rec.days) || 0))
+      const bal = next.balances[uid][rec.type]
+      if (bal) {
+        if (prevStatus !== 'approved' && status === 'approved') bal.used += Number(rec.days) || 0
+        if (prevStatus === 'approved' && status !== 'approved') bal.used = Math.max(0, bal.used - (Number(rec.days) || 0))
+      }
+      return next
+    })
+  }
+
+  // ─── staff CRUD ────────────────────────────────────────────────────────────
+  const addUser = ({ name, username, role, branchIds, reportsTo = null }) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      const uid = username.trim().toLowerCase().replace(/\s+/g, '')
+      next.users[uid] = {
+        name,
+        initials: name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase(),
+        role,
+        password: null,
+        mustSetPw: true,
+        branchIds,
+        reportsTo,
+        expectedStart: role === 'admin' ? '' : '09:00',
+        expectedEnd:   role === 'admin' ? '' : '18:00',
+        workDays: [...DEFAULT_WORK_DAYS],
+        memo: '',
+      }
+      next.attendance[uid] = []
+      next.leaves[uid]     = []
+      next.schedules[uid]  = []
+      next.balances[uid]   = Object.fromEntries(LEAVE_TYPES.map((t) => [t.id, { total: t.defaultDays, used: 0 }]))
       return next
     })
   }
@@ -236,30 +296,124 @@ export function usePortalState() {
     setDb((prev) => {
       const next = clone(prev)
       next.users[uid] = { ...next.users[uid], ...payload }
-      Object.values(next.attendance[uid] || {}).forEach?.(() => {})
-      ;(next.attendance[uid] || []).forEach((record) => applyAttendanceTiming(uid, record, next))
+      ;(next.attendance[uid] || []).forEach((rec) => applyAttendanceTiming(uid, rec, next))
       return next
     })
   }
 
-  const addUser = ({ name, username, role, branchIds }) => {
+  const deleteUser = (uid) => {
     setDb((prev) => {
       const next = clone(prev)
-      next.users[username] = {
-        name,
-        initials: name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase(),
-        role,
-        password: null,
-        mustSetPw: true,
-        branchIds,
-        expectedStart: role === 'admin' ? '' : '09:00',
-        expectedEnd: role === 'admin' ? '' : '18:00',
-        workDays: [...DEFAULT_WORK_DAYS],
-        memo: '',
-      }
-      next.attendance[username] = []
-      next.leaves[username] = []
-      next.balances[username] = { 'Annual leave': { total: 14, used: 0 }, 'Medical leave': { total: 14, used: 0 }, 'PH off in lieu': { total: 0, used: 0 }, 'Emergency leave': { total: 3, used: 0 } }
+      delete next.users[uid]
+      delete next.attendance[uid]
+      delete next.leaves[uid]
+      delete next.balances[uid]
+      delete next.schedules[uid]
+      delete next.activeSessions?.[uid]
+      // Re-assign subordinates to null
+      Object.values(next.users).forEach((u) => { if (u.reportsTo === uid) u.reportsTo = null })
+      return next
+    })
+  }
+
+  const setBalance = (uid, leaveType, field, value) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      ensureUserBalance(uid, next)
+      next.balances[uid][leaveType][field] = Math.max(0, Number(value) || 0)
+      return next
+    })
+  }
+
+  // ─── branch CRUD ───────────────────────────────────────────────────────────
+  const addBranch = ({ name, address, lat, lng, radius = 100, color = '#7986CB' }) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      next.branches.push({ id: genId(), name, address, lat: Number(lat) || null, lng: Number(lng) || null, radius: Number(radius) || 100, color })
+      return next
+    })
+  }
+
+  const saveBranch = (id, payload) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      const idx = next.branches.findIndex((b) => b.id === id)
+      if (idx >= 0) next.branches[idx] = { ...next.branches[idx], ...payload, lat: Number(payload.lat) || null, lng: Number(payload.lng) || null }
+      return next
+    })
+  }
+
+  const deleteBranch = (id) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      next.branches = next.branches.filter((b) => b.id !== id)
+      Object.values(next.users).forEach((u) => { u.branchIds = (u.branchIds || []).filter((bid) => bid !== id) })
+      return next
+    })
+  }
+
+  // ─── shift templates ───────────────────────────────────────────────────────
+  const addShiftTemplate = ({ name, startTime, endTime, color }) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      if (!next.shiftTemplates) next.shiftTemplates = []
+      next.shiftTemplates.push({ id: genId(), name, startTime, endTime, color })
+      return next
+    })
+  }
+
+  const saveShiftTemplate = (id, payload) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      const idx = (next.shiftTemplates || []).findIndex((t) => t.id === id)
+      if (idx >= 0) next.shiftTemplates[idx] = { ...next.shiftTemplates[idx], ...payload }
+      return next
+    })
+  }
+
+  const deleteShiftTemplate = (id) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      next.shiftTemplates = (next.shiftTemplates || []).filter((t) => t.id !== id)
+      return next
+    })
+  }
+
+  // ─── schedules ─────────────────────────────────────────────────────────────
+  const assignShift = (uid, { date, branchId, templateId, startTime, endTime, note = '' }) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      if (!next.schedules) next.schedules = {}
+      if (!next.schedules[uid]) next.schedules[uid] = []
+      // Remove existing shift on same date
+      next.schedules[uid] = next.schedules[uid].filter((s) => s.date !== date)
+      next.schedules[uid].push({ id: genId(), date, branchId, templateId, startTime, endTime, note })
+      return next
+    })
+  }
+
+  const deleteShift = (uid, shiftId) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      if (next.schedules?.[uid]) next.schedules[uid] = next.schedules[uid].filter((s) => s.id !== shiftId)
+      return next
+    })
+  }
+
+  // ─── calendar events ───────────────────────────────────────────────────────
+  const addCalendarEvent = ({ title, date, color }) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      if (!next.calendarEvents) next.calendarEvents = []
+      next.calendarEvents.push({ id: genId(), title, date, color, createdBy: currentUserId })
+      return next
+    })
+  }
+
+  const deleteCalendarEvent = (id) => {
+    setDb((prev) => {
+      const next = clone(prev)
+      next.calendarEvents = (next.calendarEvents || []).filter((e) => e.id !== id)
       return next
     })
   }
@@ -271,16 +425,36 @@ export function usePortalState() {
     clockSession,
     helpers,
     workdayOptions: WORKDAY_OPTIONS,
+    leaveTypes: LEAVE_TYPES,
+    // auth
     login,
     setupPassword,
     logout,
+    // clock
     clockIn,
     clockOut,
+    // leave
     submitLeave,
     revokeLeave,
     actLeave,
-    saveStaff,
+    // staff
     addUser,
-    setDb,
+    saveStaff,
+    deleteUser,
+    setBalance,
+    // branches
+    addBranch,
+    saveBranch,
+    deleteBranch,
+    // shift templates
+    addShiftTemplate,
+    saveShiftTemplate,
+    deleteShiftTemplate,
+    // schedules
+    assignShift,
+    deleteShift,
+    // calendar
+    addCalendarEvent,
+    deleteCalendarEvent,
   }
 }
