@@ -30,7 +30,6 @@ export default function LoginScreen({ onLogin }) {
         </label>
         {error && <div className="error-box">{error}</div>}
         <button className="primary-btn" type="submit">Sign in</button>
-        <p className="hint">Demo: alice / pass123 or admin / admin123</p>
       </form>
     </div>
   )
