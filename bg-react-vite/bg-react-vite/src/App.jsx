@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import AppShell from './components/AppShell'
 import AdminPortal from './components/AdminPortal'
 import LoginScreen from './components/LoginScreen'
 import SetupScreen from './components/SetupScreen'
@@ -8,12 +7,23 @@ import { usePortalState } from './hooks/usePortalState'
 
 export default function App() {
   const state = usePortalState()
-  const { currentUserId, currentUser, login, setupPassword } = state
+  const { loading, currentUserId, currentUser, login, setupPassword } = state
 
   const [setupUserId, setSetupUserId] = useState(null)
 
-  const handleLogin = (username, password) => {
-    const result = login(username, password)
+  if (loading) {
+    return (
+      <div className="screen-shell center">
+        <div className="loading-wrap">
+          <div className="brand-icon" style={{ marginBottom: 16 }}>BG</div>
+          <div className="loading-text">Loading…</div>
+        </div>
+      </div>
+    )
+  }
+
+  const handleLogin = async (username, password) => {
+    const result = await login(username, password)
     if (result.setupRequired) setSetupUserId(result.userId)
     return result
   }
@@ -29,9 +39,6 @@ export default function App() {
 
   if (!currentUser) return <LoginScreen onLogin={handleLogin} />
 
-  if (currentUser.role === 'admin') {
-    return <AdminPortal state={state} />
-  }
-
+  if (currentUser.role === 'admin') return <AdminPortal state={state} />
   return <StaffPortal state={state} />
 }

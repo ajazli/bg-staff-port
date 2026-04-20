@@ -11,7 +11,7 @@ function LeavesPanel({ db, helpers, actLeave, currentUserId }) {
   const [filter, setFilter] = useState('pending')
   const allLeaves = useMemo(() =>
     Object.entries(db.leaves).flatMap(([uid, records]) =>
-      records.map((rec, idx) => ({ ...rec, uid, idx }))
+      records.map((rec) => ({ ...rec, uid }))
     ), [db.leaves])
 
   const visible = filter === 'all' ? allLeaves : allLeaves.filter((r) => r.status === filter)
@@ -50,8 +50,8 @@ function LeavesPanel({ db, helpers, actLeave, currentUserId }) {
                       <td>
                         {rec.status === 'pending'
                           ? <div className="stack-inline">
-                              <button className="ghost-btn" onClick={() => actLeave(rec.uid, rec.idx, 'approved')}>Approve</button>
-                              <button className="ghost-btn danger-text" onClick={() => actLeave(rec.uid, rec.idx, 'rejected')}>Reject</button>
+                              <button className="ghost-btn" onClick={() => actLeave(rec.uid, rec.id, 'approved')}>Approve</button>
+                              <button className="ghost-btn danger-text" onClick={() => actLeave(rec.uid, rec.id, 'rejected')}>Reject</button>
                             </div>
                           : '—'}
                       </td>

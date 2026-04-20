@@ -392,7 +392,7 @@ function LeaveHistoryTab({ userId, db, helpers, onRevokeLeave }) {
           <tbody>
             {leaves.length === 0
               ? <tr><td colSpan="8" className="empty-cell">No leave history yet</td></tr>
-              : leaves.map((leave, index) => {
+              : leaves.map((leave) => {
                   const lt = helpers.getLeaveType(leave.type)
                   return (
                     <tr key={`${leave.type}-${leave.start}-${index}`}>
@@ -407,7 +407,7 @@ function LeaveHistoryTab({ userId, db, helpers, onRevokeLeave }) {
                           : '—'}
                       </td>
                       <td><Badge tone={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'info'}>{helpers.cap(leave.status)}</Badge></td>
-                      <td>{leave.status === 'pending' ? <button className="ghost-btn danger-text" onClick={() => onRevokeLeave(index)}>Revoke</button> : '—'}</td>
+                      <td>{leave.status === 'pending' ? <button className="ghost-btn danger-text" onClick={() => onRevokeLeave(leave.id)}>Revoke</button> : '—'}</td>
                     </tr>
                   )
                 })}
