@@ -150,6 +150,103 @@ function AttendancePanel({ db, helpers }) {
   )
 }
 
+// ─── Breakages (admin) ───────────────────────────────────────────────────────
+function BreakagesPanel({ db, helpers }) {
+  const [search, setSearch] = useState('')
+  const [preview, setPreview] = useState(null)  // url string
+
+  const allBreakages = Object.entries(db.breakages || {}).flatMap(([uid, records]) =>
+    records.map((r) => ({ ...r, uid }))
+  ).sort((a, b) => {
+    if (b.date !== a.date) return b.date.localeCompare(a.date)
+    return new Date(b.createdAt) - new Date(a.createdAt)
+  })
+
+  const filtered = search.trim()
+    ? allBreakages.filter((b) =>
+        (db.users[b.uid]?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+        b.reason.toLowerCase().includes(search.toLowerCase())
+      )
+    : allBreakages
+
+  return (
+    <div>
+      <div className="section-header">
+        <div className="section-title">Breakage reports</div>
+        <input
+          className="search-input"
+          placeholder="Search staff or reason…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {/* Desktop table */}
+      <div className="table-card leave-table-desktop">
+        <table>
+          <thead>
+            <tr><th>Staff</th><th>Date</th><th>Time</th><th>Reason</th><th>Photo</th><th>Submitted</th></tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0
+              ? <tr><td colSpan="6" className="empty-cell">No breakage reports</td></tr>
+              : filtered.map((b) => (
+                <tr key={b.id}>
+                  <td><strong>{db.users[b.uid]?.name || b.uid}</strong></td>
+                  <td>{helpers.fmtDate(b.date)}</td>
+                  <td>{b.time || '—'}</td>
+                  <td className="td-reason">{b.reason}</td>
+                  <td>
+                    {b.attachmentUrl
+                      ? (
+                        <button className="ghost-btn breakage-thumb-btn" onClick={() => setPreview(b.attachmentUrl)}>
+                          <img src={b.attachmentUrl} alt="breakage" className="breakage-thumb-sm" />
+                        </button>
+                      )
+                      : '—'}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)', fontSize: 12 }}>
+                    {b.createdAt ? new Date(b.createdAt).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="leave-cards-mobile">
+        {filtered.length === 0
+          ? <div className="table-card"><div className="empty-cell">No breakage reports</div></div>
+          : filtered.map((b) => (
+            <div key={b.id} className="breakage-card">
+              <div className="breakage-card-header">
+                <strong>{db.users[b.uid]?.name || b.uid}</strong>
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{helpers.fmtDate(b.date)}{b.time ? ` · ${b.time}` : ''}</span>
+              </div>
+              <div className="breakage-card-reason">{b.reason}</div>
+              {b.attachmentUrl && (
+                <button className="ghost-btn breakage-thumb-btn" onClick={() => setPreview(b.attachmentUrl)} style={{ marginTop: 8 }}>
+                  <img src={b.attachmentUrl} alt="breakage" className="breakage-thumb-sm" />
+                </button>
+              )}
+            </div>
+          ))}
+      </div>
+
+      {/* Full-size image preview modal */}
+      {preview && (
+        <div className="modal-overlay" onClick={() => setPreview(null)}>
+          <div className="breakage-fullimg-wrap" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close breakage-fullimg-close" onClick={() => setPreview(null)}>✕</button>
+            <img src={preview} alt="breakage" className="breakage-fullimg" />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Staff CRUD ──────────────────────────────────────────────────────────────
 function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance, resetPassword }) {
   const [modal, setModal] = useState(null)  // null | 'create' | uid (edit)
@@ -636,6 +733,7 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
 const TABS = [
   { id: 'attendance', label: 'Attendance' },
   { id: 'leaves',     label: 'Leave requests' },
+  { id: 'breakages',  label: 'Breakages' },
   { id: 'schedule',   label: 'Schedule' },
   { id: 'staff',      label: 'Manage staff' },
   { id: 'branches',   label: 'Branches' },
@@ -657,15 +755,17 @@ export default function AdminPortal({ state }) {
 
   const [activeTab, setActiveTab] = useState('attendance')
 
-  const pendingCount = Object.values(db.leaves).flat().filter((l) => l.status === 'pending').length
-  const liveCount    = Object.keys(db.activeSessions || {}).length
+  const pendingCount  = Object.values(db.leaves).flat().filter((l) => l.status === 'pending').length
+  const liveCount     = Object.keys(db.activeSessions || {}).length
+  const breakageCount = Object.values(db.breakages || {}).flat().length
 
   return (
     <AppShell user={currentUser} onLogout={logout} onChangePassword={changePassword} activeTab={activeTab} onTabChange={setActiveTab}
       tabs={TABS.map((t) => ({
         ...t,
-        label: t.id === 'leaves' && pendingCount > 0 ? `${t.label} (${pendingCount})`
-             : t.id === 'attendance' && liveCount > 0 ? `${t.label} ● ${liveCount}`
+        label: t.id === 'leaves'    && pendingCount  > 0 ? `${t.label} (${pendingCount})`
+             : t.id === 'attendance' && liveCount     > 0 ? `${t.label} ● ${liveCount}`
+             : t.id === 'breakages'  && breakageCount > 0 ? `${t.label} (${breakageCount})`
              : t.label,
       }))}>
 
@@ -674,6 +774,9 @@ export default function AdminPortal({ state }) {
       )}
       {activeTab === 'leaves' && (
         <LeavesPanel db={db} helpers={helpers} actLeave={actLeave} currentUserId={currentUserId} />
+      )}
+      {activeTab === 'breakages' && (
+        <BreakagesPanel db={db} helpers={helpers} />
       )}
       {activeTab === 'schedule' && (
         <SchedulePanel db={db} helpers={helpers} assignShift={assignShift} deleteShift={deleteShift} currentUserId={currentUserId} />

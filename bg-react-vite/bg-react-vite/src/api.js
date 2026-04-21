@@ -69,4 +69,7 @@ export const api = {
   // Calendar events
   createEvent: (data) => req('POST',   '/calendar',       data),
   deleteEvent: (id)   => req('DELETE', `/calendar/${id}`),
+
+  // Breakages
+  submitBreakage: (data) => req('POST', '/breakages', data),
 }

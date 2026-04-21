@@ -129,11 +129,23 @@ async function createTables(client) {
       created_at TIMESTAMPTZ  DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS breakages (
+      id              SERIAL       PRIMARY KEY,
+      user_id         VARCHAR(50)  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      date            DATE         NOT NULL,
+      time            VARCHAR(5)   DEFAULT '',
+      reason          TEXT         NOT NULL,
+      attachment_name VARCHAR(255) DEFAULT '',
+      attachment_url  TEXT         DEFAULT '',
+      created_at      TIMESTAMPTZ  DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_attendance_user  ON attendance(user_id);
     CREATE INDEX IF NOT EXISTS idx_attendance_date  ON attendance(date);
     CREATE INDEX IF NOT EXISTS idx_leaves_user      ON leaves(user_id);
     CREATE INDEX IF NOT EXISTS idx_schedules_user   ON schedules(user_id);
     CREATE INDEX IF NOT EXISTS idx_schedules_date   ON schedules(date);
+    CREATE INDEX IF NOT EXISTS idx_breakages_user   ON breakages(user_id);
   `)
 }
 

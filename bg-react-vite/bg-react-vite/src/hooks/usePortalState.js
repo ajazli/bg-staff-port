@@ -297,6 +297,22 @@ export function usePortalState() {
     }))
   }
 
+  // ─── breakages ─────────────────────────────────────────────────────────────
+  const submitBreakage = async ({ date, time, reason, attachmentName = '', attachmentUrl = '' }) => {
+    const row = await api.submitBreakage({ date, time, reason, attachmentName, attachmentUrl })
+    const entry = {
+      id: row.id, userId: currentUserId, date, time, reason,
+      attachmentName, attachmentUrl, createdAt: row.created_at,
+    }
+    setDb((prev) => ({
+      ...prev,
+      breakages: {
+        ...prev.breakages,
+        [currentUserId]: [entry, ...(prev.breakages?.[currentUserId] || [])],
+      },
+    }))
+  }
+
   // ─── calendar events ───────────────────────────────────────────────────────
   const addCalendarEvent = async ({ title, date, color }) => {
     const row = await api.createEvent({ title, date, color })
@@ -352,5 +368,7 @@ export function usePortalState() {
     // calendar
     addCalendarEvent,
     deleteCalendarEvent,
+    // breakages
+    submitBreakage,
   }
 }

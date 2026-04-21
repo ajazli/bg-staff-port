@@ -252,6 +252,36 @@ th { border-top: none; background: var(--bg-warm); font-size: 11px; text-transfo
 .loading-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .loading-text { color: var(--muted); font-size: 15px; }
 
+/* ─── Search input ───────────────────────────────────────────────────────────── */
+.search-input {
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: #fff; color: var(--charcoal); font-size: 13px; min-width: 220px;
+}
+.search-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px rgba(91,127,184,.12); }
+
+/* ─── Breakage layout ────────────────────────────────────────────────────────── */
+.breakage-layout { align-items: start; }
+
+.breakage-preview { display: flex; align-items: center; gap: 10px; }
+.breakage-thumb   { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+
+.breakage-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(91,127,184,.06); }
+.breakage-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
+.breakage-card-date { font-weight: 600; font-size: 13px; color: var(--muted); }
+.breakage-card-reason { font-size: 13px; color: var(--charcoal); margin-bottom: 8px; }
+.breakage-card-img-link { display: block; margin-top: 8px; }
+.breakage-card-img { width: 100%; max-width: 260px; height: 160px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border); display: block; }
+.breakage-fname { font-size: 12px; color: var(--muted); }
+
+/* Admin breakage table thumbnails */
+.breakage-thumb-btn { background: none; border: none; padding: 0; cursor: pointer; }
+.breakage-thumb-sm  { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: block; }
+
+/* Full-size image lightbox */
+.breakage-fullimg-wrap { position: relative; max-width: 90vw; max-height: 90vh; }
+.breakage-fullimg { max-width: 90vw; max-height: 85vh; object-fit: contain; border-radius: 12px; display: block; }
+.breakage-fullimg-close { position: absolute; top: -14px; right: -14px; background: #fff; border: 1px solid var(--border) !important; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+
 /* ─── Leave history responsive ───────────────────────────────────────────────── */
 .leave-table-desktop { display: block; }
 .leave-cards-mobile  { display: none; }
