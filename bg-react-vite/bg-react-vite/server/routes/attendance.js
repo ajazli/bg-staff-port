@@ -49,9 +49,18 @@ router.post('/clock-out', async (req, res) => {
 
     const startedAt  = new Date(session.started_at)
     const finishedAt = new Date()
-    const diff  = finishedAt - startedAt
-    const hrs   = Math.floor(diff / 3600000)
-    const mins  = Math.floor((diff % 3600000) / 60000)
+
+    // accumulate any ongoing break into total
+    const extraBreak = (session.on_break && session.break_started_at)
+      ? Math.max(0, Math.round((finishedAt - new Date(session.break_started_at)) / 60000))
+      : 0
+    const totalBreakMins = (session.total_break_minutes || 0) + extraBreak
+
+    const diff       = finishedAt - startedAt
+    const grossMins  = Math.floor(diff / 60000)
+    const netMins    = Math.max(0, grossMins - totalBreakMins)
+    const hrs        = Math.floor(netMins / 60)
+    const mins       = netMins % 60
     const dateStr = localDateStr(startedAt)
     const inTime  = startedAt.toLocaleTimeString('en-SG',  { hour: '2-digit', minute: '2-digit', hour12: false })
     const outTime = finishedAt.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -109,8 +118,8 @@ router.post('/clock-out', async (req, res) => {
       `INSERT INTO attendance
          (user_id, date, in_time, out_time, hours, status, branch_id, branch_name, loc_ok,
           late_minutes, is_late, early_leave_minutes, left_early, overtime_minutes, did_overtime,
-          expected_start, expected_end, ph_name, ph_credit_added, ph_credit_skipped)
-       VALUES ($1,$2,$3,$4,$5,'complete',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          expected_start, expected_end, ph_name, ph_credit_added, ph_credit_skipped, break_minutes)
+       VALUES ($1,$2,$3,$4,$5,'complete',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [uid, dateStr, inTime, outTime, `${hrs}h ${mins}m`,
        session.branch_id, session.branch_name, session.loc_ok,
@@ -118,7 +127,7 @@ router.post('/clock-out', async (req, res) => {
        earlyLeaveMinutes, earlyLeaveMinutes > 0,
        overtimeMinutes, overtimeMinutes > 0,
        expectedStart, expectedEnd,
-       phName, phCreditAdded, phCreditSkipped]
+       phName, phCreditAdded, phCreditSkipped, totalBreakMins]
     )
 
     await pool.query('DELETE FROM active_sessions WHERE user_id = $1', [uid])
@@ -127,6 +136,45 @@ router.post('/clock-out', async (req, res) => {
     res.json({ ok: true, phCredited: phCreditAdded, phName, record: rows[0] })
   } catch (err) {
     await pool.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+router.post('/break-start', async (req, res) => {
+  try {
+    const uid = req.user.userId
+    const { rows } = await pool.query('SELECT * FROM active_sessions WHERE user_id=$1', [uid])
+    const session = rows[0]
+    if (!session) return res.status(400).json({ error: 'No active clock-in session' })
+    if (session.on_break) return res.status(400).json({ error: 'Already on break' })
+    await pool.query(
+      'UPDATE active_sessions SET on_break=true, break_started_at=NOW() WHERE user_id=$1', [uid]
+    )
+    res.json({ ok: true, breakStartedAt: new Date().toISOString() })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+router.post('/break-end', async (req, res) => {
+  try {
+    const uid = req.user.userId
+    const { rows } = await pool.query('SELECT * FROM active_sessions WHERE user_id=$1', [uid])
+    const session = rows[0]
+    if (!session) return res.status(400).json({ error: 'No active clock-in session' })
+    if (!session.on_break) return res.status(400).json({ error: 'Not on break' })
+    const breakMins = session.break_started_at
+      ? Math.max(0, Math.round((Date.now() - new Date(session.break_started_at)) / 60000))
+      : 0
+    await pool.query(
+      `UPDATE active_sessions SET on_break=false, break_started_at=NULL,
+       total_break_minutes=total_break_minutes+$1 WHERE user_id=$2`,
+      [breakMins, uid]
+    )
+    res.json({ ok: true, breakMinutes: breakMins })
+  } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Server error' })
   }

@@ -461,7 +461,7 @@ function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance, r
             <table>
               <thead><tr><th>Leave type</th><th>Total (days)</th><th>Used</th><th>Remaining</th></tr></thead>
               <tbody>
-                {LEAVE_TYPES.map((lt) => {
+                {(db.leaveTypes || LEAVE_TYPES).map((lt) => {
                   const bal = db.balances[balanceUid]?.[lt.id] || { total: 0, used: 0 }
                   return (
                     <tr key={lt.id}>
@@ -729,6 +729,117 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
   )
 }
 
+// ─── Leave Types ─────────────────────────────────────────────────────────────
+function LeaveTypesPanel({ db, addLeaveType, saveLeaveType, deleteLeaveType }) {
+  const [modal, setModal]     = useState(null)  // null | 'new' | id (edit)
+  const [form, setForm]       = useState({ name: '', color: '#43a047', defaultDays: 0, requiresFile: false })
+  const [editForm, setEditForm] = useState(null)
+  const [error, setError]     = useState('')
+
+  const COLORS = ['#43a047','#e53935','#d81b60','#8e24aa','#fb8c00','#f4511e','#6d4c41','#546e7a','#757575','#00acc1','#5b7fb8','#AB47BC']
+
+  const handleCreate = async () => {
+    setError('')
+    if (!form.name.trim()) return setError('Name is required')
+    try {
+      await addLeaveType(form)
+      setModal(null)
+    } catch (err) {
+      setError(err.message || 'Failed to create')
+    }
+  }
+
+  const handleSave = async () => {
+    setError('')
+    try {
+      await saveLeaveType(editForm.id, { color: editForm.color, defaultDays: editForm.defaultDays, requiresFile: editForm.requiresFile })
+      setModal(null)
+    } catch (err) {
+      setError(err.message || 'Failed to save')
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this leave type? This cannot be undone if leave records exist.')) return
+    try {
+      await deleteLeaveType(id)
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const ColorPicker = ({ value, onChange }) => (
+    <div className="color-row">
+      {COLORS.map((c) => (
+        <button key={c} className={`color-dot${value === c ? ' selected' : ''}`} style={{ background: c }} onClick={() => onChange(c)} />
+      ))}
+    </div>
+  )
+
+  const leaveTypes = db.leaveTypes || []
+
+  return (
+    <div>
+      <div className="section-header">
+        <div className="section-title">Leave types</div>
+        <button className="primary-btn" onClick={() => { setForm({ name: '', color: '#43a047', defaultDays: 0, requiresFile: false }); setError(''); setModal('new') }}>+ New type</button>
+      </div>
+      <div className="table-card">
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Colour</th><th>Default days</th><th>Requires doc</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            {leaveTypes.length === 0
+              ? <tr><td colSpan="5" className="empty-cell">No leave types configured</td></tr>
+              : leaveTypes.map((lt) => (
+                <tr key={lt.id}>
+                  <td><span className="lt-swatch" style={{ background: lt.color }} />{lt.name}</td>
+                  <td><span className="lt-color-hex">{lt.color}</span></td>
+                  <td>{lt.defaultDays === 0 ? 'Unlimited / N/A' : `${lt.defaultDays} days`}</td>
+                  <td>{lt.requiresFile ? <Badge tone="warn">Required</Badge> : <Badge>No</Badge>}</td>
+                  <td>
+                    <div className="stack-inline">
+                      <button className="ghost-btn" onClick={() => { setEditForm({ ...lt }); setError(''); setModal(lt.id) }}>Edit</button>
+                      <button className="ghost-btn danger-text" onClick={() => handleDelete(lt.id)}>Delete</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {modal === 'new' && (
+        <Modal title="New leave type" onClose={() => setModal(null)}>
+          <label className="field"><span>Name</span><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Emergency Leave" autoFocus /></label>
+          <label className="field"><span>Default days (0 = unlimited/unpaid)</span><input type="number" min={0} value={form.defaultDays} onChange={(e) => setForm({ ...form, defaultDays: Number(e.target.value) })} /></label>
+          <div className="field"><span>Colour</span><ColorPicker value={form.color} onChange={(c) => setForm({ ...form, color: c })} /></div>
+          <label className="check-chip" style={{ marginBottom: 14 }}>
+            <input type="checkbox" checked={form.requiresFile} onChange={(e) => setForm({ ...form, requiresFile: e.target.checked })} />
+            Requires supporting document
+          </label>
+          {error && <div className="error-box">{error}</div>}
+          <button className="primary-btn" onClick={handleCreate}>Create leave type</button>
+        </Modal>
+      )}
+
+      {modal && modal !== 'new' && editForm && (
+        <Modal title={`Edit — ${editForm.name}`} onClose={() => setModal(null)}>
+          <label className="field"><span>Default days</span><input type="number" min={0} value={editForm.defaultDays} onChange={(e) => setEditForm({ ...editForm, defaultDays: Number(e.target.value) })} /></label>
+          <div className="field"><span>Colour</span><ColorPicker value={editForm.color} onChange={(c) => setEditForm({ ...editForm, color: c })} /></div>
+          <label className="check-chip" style={{ marginBottom: 14 }}>
+            <input type="checkbox" checked={editForm.requiresFile} onChange={(e) => setEditForm({ ...editForm, requiresFile: e.target.checked })} />
+            Requires supporting document
+          </label>
+          {error && <div className="error-box">{error}</div>}
+          <button className="primary-btn" onClick={handleSave}>Save changes</button>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─── Main AdminPortal ─────────────────────────────────────────────────────────
 const TABS = [
   { id: 'attendance', label: 'Attendance' },
@@ -738,6 +849,7 @@ const TABS = [
   { id: 'staff',      label: 'Manage staff' },
   { id: 'branches',   label: 'Branches' },
   { id: 'templates',  label: 'Shift templates' },
+  { id: 'leave-types', label: 'Leave types' },
   { id: 'calendar',   label: 'Calendar' },
 ]
 
@@ -751,6 +863,7 @@ export default function AdminPortal({ state }) {
     addCalendarEvent, deleteCalendarEvent,
     changePassword,
     logout,
+    addLeaveType, saveLeaveType, deleteLeaveType,
   } = state
 
   const [activeTab, setActiveTab] = useState('attendance')
@@ -789,6 +902,9 @@ export default function AdminPortal({ state }) {
       )}
       {activeTab === 'templates' && (
         <TemplatesPanel db={db} addShiftTemplate={addShiftTemplate} saveShiftTemplate={saveShiftTemplate} deleteShiftTemplate={deleteShiftTemplate} />
+      )}
+      {activeTab === 'leave-types' && (
+        <LeaveTypesPanel db={db} addLeaveType={addLeaveType} saveLeaveType={saveLeaveType} deleteLeaveType={deleteLeaveType} />
       )}
       {activeTab === 'calendar' && (
         <CalendarView

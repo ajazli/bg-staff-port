@@ -14,6 +14,7 @@ import schedulesRoutes  from './routes/schedules.js'
 import calendarRoutes   from './routes/calendar.js'
 import appDataRoutes    from './routes/appdata.js'
 import breakagesRoutes  from './routes/breakages.js'
+import leaveTypesRoutes from './routes/leaveTypes.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app  = express()
@@ -34,6 +35,7 @@ app.use('/api/schedules',   schedulesRoutes)
 app.use('/api/calendar',    calendarRoutes)
 app.use('/api/app-data',    appDataRoutes)
 app.use('/api/breakages',   breakagesRoutes)
+app.use('/api/leave-types', leaveTypesRoutes)
 
 // ─── Serve built React app in production ────────────────────────────────────
 if (process.env.NODE_ENV === 'production') {

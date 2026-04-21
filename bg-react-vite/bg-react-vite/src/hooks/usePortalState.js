@@ -5,7 +5,7 @@ import { api, clearToken, getToken, setToken } from '../api'
 export function usePortalState() {
   const [db,             setDb]             = useState(null)
   const [currentUserId,  setCurrentUserId]  = useState(null)
-  const [clockSession,   setClockSession]   = useState({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
+  const [clockSession,   setClockSession]   = useState({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false, onBreak: false, breakStartedAt: null, totalBreakMinutes: 0 })
   const [loading,        setLoading]        = useState(true)
 
   // ─── load all app data from server ────────────────────────────────────────
@@ -30,7 +30,7 @@ export function usePortalState() {
         setCurrentUserId(me.id)
         // Restore active clock session if server shows one
         const session = data?.activeSessions?.[me.id]
-        if (session) setClockSession({ active: true, startedAt: session.startedAt, branchId: session.branchId, branchName: session.branchName, locOk: session.locOk })
+        if (session) setClockSession({ active: true, startedAt: session.startedAt, branchId: session.branchId, branchName: session.branchName, locOk: session.locOk, onBreak: session.onBreak || false, breakStartedAt: session.breakStartedAt || null, totalBreakMinutes: session.totalBreakMinutes || 0 })
       })
       .catch(() => { clearToken() })
       .finally(() => setLoading(false))
@@ -84,7 +84,7 @@ export function usePortalState() {
         }
         return result
       },
-      getLeaveType:     (id)  => LEAVE_TYPES.find((t) => t.id === id) || null,
+      getLeaveType: (id) => (db.leaveTypes || LEAVE_TYPES).find((t) => t.id === id) || null,
       getShiftTemplate: (id)  => (db.shiftTemplates || []).find((t) => t.id === id) || null,
       getTodayShift: (uid) => {
         const today = new Date().toISOString().slice(0, 10)
@@ -104,7 +104,7 @@ export function usePortalState() {
       const uid  = username.trim().toLowerCase()
       setCurrentUserId(uid)
       const session = data?.activeSessions?.[uid]
-      if (session) setClockSession({ active: true, ...session })
+      if (session) setClockSession({ active: true, startedAt: session.startedAt, branchId: session.branchId, branchName: session.branchName, locOk: session.locOk, onBreak: session.onBreak || false, breakStartedAt: session.breakStartedAt || null, totalBreakMinutes: session.totalBreakMinutes || 0 })
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err.message || 'Login failed.' }
@@ -134,25 +134,25 @@ export function usePortalState() {
     clearToken()
     setCurrentUserId(null)
     setDb(null)
-    setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
+    setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false, onBreak: false, breakStartedAt: null, totalBreakMinutes: 0 })
   }
 
   // ─── clock ─────────────────────────────────────────────────────────────────
   const clockIn = async (branchId, { locOk = false } = {}) => {
     const result = await api.clockIn(branchId, locOk)
     const branch = db?.branches.find((b) => b.id === branchId)
-    const session = { active: true, startedAt: new Date().toISOString(), branchId, branchName: result.branchName || branch?.name || '', locOk }
+    const session = { active: true, startedAt: new Date().toISOString(), branchId, branchName: result.branchName || branch?.name || '', locOk, onBreak: false, breakStartedAt: null, totalBreakMinutes: 0 }
     setClockSession(session)
     setDb((prev) => ({
       ...prev,
-      activeSessions: { ...prev.activeSessions, [currentUserId]: { startedAt: session.startedAt, branchId, branchName: session.branchName, locOk } },
+      activeSessions: { ...prev.activeSessions, [currentUserId]: { startedAt: session.startedAt, branchId, branchName: session.branchName, locOk, onBreak: false, breakStartedAt: null, totalBreakMinutes: 0 } },
     }))
   }
 
   const clockOut = async () => {
     try {
       const result = await api.clockOut()
-      setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false })
+      setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false, onBreak: false, breakStartedAt: null, totalBreakMinutes: 0 })
       // Reload data to get the new attendance record and updated balances
       await loadData()
       return { phCredited: result.phCredited, phName: result.phName }
@@ -160,6 +160,35 @@ export function usePortalState() {
       console.error('Clock-out failed:', err)
       return { phCredited: false, phName: '' }
     }
+  }
+
+  const breakStart = async () => {
+    const result = await api.breakStart()
+    setClockSession((prev) => ({ ...prev, onBreak: true, breakStartedAt: result.breakStartedAt }))
+    setDb((prev) => ({
+      ...prev,
+      activeSessions: {
+        ...prev.activeSessions,
+        [currentUserId]: { ...prev.activeSessions?.[currentUserId], onBreak: true, breakStartedAt: result.breakStartedAt },
+      },
+    }))
+  }
+
+  const breakEnd = async () => {
+    const result = await api.breakEnd()
+    setClockSession((prev) => ({
+      ...prev,
+      onBreak: false,
+      breakStartedAt: null,
+      totalBreakMinutes: (prev.totalBreakMinutes || 0) + (result.breakMinutes || 0),
+    }))
+    setDb((prev) => ({
+      ...prev,
+      activeSessions: {
+        ...prev.activeSessions,
+        [currentUserId]: { ...prev.activeSessions?.[currentUserId], onBreak: false, breakStartedAt: null },
+      },
+    }))
   }
 
   // ─── leave ─────────────────────────────────────────────────────────────────
@@ -313,6 +342,25 @@ export function usePortalState() {
     }))
   }
 
+  // ─── leave type CRUD ───────────────────────────────────────────────────────
+  const addLeaveType = async (data) => {
+    const row = await api.createLeaveType(data)
+    const lt = { id: row.id, name: row.name, label: row.name, color: row.color, defaultDays: row.default_days, requiresFile: row.requires_file, sortOrder: row.sort_order }
+    setDb((prev) => ({ ...prev, leaveTypes: [...(prev.leaveTypes || []), lt] }))
+    return lt
+  }
+
+  const saveLeaveType = async (id, data) => {
+    const row = await api.updateLeaveType(id, data)
+    const lt = { id: row.id, name: row.name, label: row.name, color: row.color, defaultDays: row.default_days, requiresFile: row.requires_file, sortOrder: row.sort_order }
+    setDb((prev) => ({ ...prev, leaveTypes: (prev.leaveTypes || []).map((t) => t.id === id ? lt : t) }))
+  }
+
+  const deleteLeaveType = async (id) => {
+    await api.deleteLeaveType(id)
+    setDb((prev) => ({ ...prev, leaveTypes: (prev.leaveTypes || []).filter((t) => t.id !== id) }))
+  }
+
   // ─── calendar events ───────────────────────────────────────────────────────
   const addCalendarEvent = async ({ title, date, color }) => {
     const row = await api.createEvent({ title, date, color })
@@ -334,7 +382,7 @@ export function usePortalState() {
     currentUser,
     clockSession,
     helpers,
-    leaveTypes:     LEAVE_TYPES,
+    leaveTypes:     db?.leaveTypes || LEAVE_TYPES,
     workdayOptions: WORKDAY_OPTIONS,
     // auth
     login,
@@ -345,6 +393,8 @@ export function usePortalState() {
     // clock
     clockIn,
     clockOut,
+    breakStart,
+    breakEnd,
     // leave
     submitLeave,
     revokeLeave,
@@ -370,5 +420,9 @@ export function usePortalState() {
     deleteCalendarEvent,
     // breakages
     submitBreakage,
+    // leave types
+    addLeaveType,
+    saveLeaveType,
+    deleteLeaveType,
   }
 }

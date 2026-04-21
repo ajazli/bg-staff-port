@@ -140,6 +140,16 @@ async function createTables(client) {
       created_at      TIMESTAMPTZ  DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS leave_types (
+      id            VARCHAR(100) PRIMARY KEY,
+      name          VARCHAR(100) NOT NULL,
+      color         VARCHAR(10)  DEFAULT '#43a047',
+      default_days  INTEGER      DEFAULT 0,
+      requires_file BOOLEAN      DEFAULT FALSE,
+      sort_order    INTEGER      DEFAULT 99,
+      created_at    TIMESTAMPTZ  DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS idx_attendance_user  ON attendance(user_id);
     CREATE INDEX IF NOT EXISTS idx_attendance_date  ON attendance(date);
     CREATE INDEX IF NOT EXISTS idx_leaves_user      ON leaves(user_id);
@@ -147,6 +157,16 @@ async function createTables(client) {
     CREATE INDEX IF NOT EXISTS idx_schedules_date   ON schedules(date);
     CREATE INDEX IF NOT EXISTS idx_breakages_user   ON breakages(user_id);
   `)
+}
+
+async function migrateTables(client) {
+  const stmts = [
+    `ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS on_break BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS break_started_at TIMESTAMPTZ`,
+    `ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS total_break_minutes INTEGER DEFAULT 0`,
+    `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS break_minutes INTEGER DEFAULT 0`,
+  ]
+  for (const s of stmts) await client.query(s)
 }
 
 async function seedData(client) {
@@ -170,9 +190,9 @@ async function seedData(client) {
   await client.query(`
     INSERT INTO users (id, name, initials, role, password_hash, must_set_pw, branch_ids, reports_to, expected_start, expected_end, work_days) VALUES
       ('admin', 'Admin',     'AD', 'admin',     $1, false, '[]',           null,    '', '',       '[1,2,3,4,5]'),
-      ('alice', 'Alice Tan', 'AT', 'team_lead', $2, false, '["b1","b2"]', 'admin', '09:00', '18:00', '[1,2,3,4,5]'),
-      ('bob',   'Bob Lim',   'BL', 'staff',     null, true,'["b2"]',      'alice', '09:00', '18:00', '[1,2,3,4,5]'),
-      ('carol', 'Carol Ng',  'CN', 'staff',      $3, false,'["b1"]',      'alice', '09:00', '18:00', '[1,2,3,4,5]')
+      ('alice', 'Alice Tan', 'AT', 'team_lead', $2, false, '["b1","b2"]', 'admin', '08:00', '20:00', '[1,2,3,4,5]'),
+      ('bob',   'Bob Lim',   'BL', 'staff',     null, true,'["b2"]',      'alice', '08:00', '20:00', '[1,2,3,4,5]'),
+      ('carol', 'Carol Ng',  'CN', 'staff',      $3, false,'["b1"]',      'alice', '08:00', '20:00', '[1,2,3,4,5]')
   `, [adminHash, aliceHash, carolHash])
 
   // Leave balances for all users
@@ -226,6 +246,26 @@ async function seedData(client) {
       ('evt1', 'Team Meeting', '2026-04-22', '#AB47BC', 'admin')
   `)
 
+  const LEAVE_TYPE_SEEDS = [
+    { id: 'Annual Leave',          color: '#43a047', defaultDays: 14,  requiresFile: false, sortOrder: 1  },
+    { id: 'Sick Leave',            color: '#e53935', defaultDays: 14,  requiresFile: true,  sortOrder: 2  },
+    { id: 'Hospitalisation Leave', color: '#d81b60', defaultDays: 60,  requiresFile: true,  sortOrder: 3  },
+    { id: 'Childcare Leave',       color: '#8e24aa', defaultDays: 6,   requiresFile: false, sortOrder: 4  },
+    { id: 'Maternity Leave',       color: '#fb8c00', defaultDays: 112, requiresFile: false, sortOrder: 5  },
+    { id: 'Paternity Leave',       color: '#f4511e', defaultDays: 14,  requiresFile: false, sortOrder: 6  },
+    { id: 'NS Leave',              color: '#6d4c41', defaultDays: 0,   requiresFile: true,  sortOrder: 7  },
+    { id: 'Compassionate Leave',   color: '#546e7a', defaultDays: 3,   requiresFile: true,  sortOrder: 8  },
+    { id: 'Unpaid Leave',          color: '#757575', defaultDays: 0,   requiresFile: false, sortOrder: 9  },
+    { id: 'PH Off-in-Lieu',        color: '#00acc1', defaultDays: 0,   requiresFile: false, sortOrder: 10 },
+  ]
+  for (const lt of LEAVE_TYPE_SEEDS) {
+    await client.query(
+      `INSERT INTO leave_types (id, name, color, default_days, requires_file, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING`,
+      [lt.id, lt.id, lt.color, lt.defaultDays, lt.requiresFile, lt.sortOrder]
+    )
+  }
+
   console.log('Seed complete.')
 }
 
@@ -234,6 +274,7 @@ export async function initDb() {
   try {
     await client.query('BEGIN')
     await createTables(client)
+    await migrateTables(client)
     await seedData(client)
     await client.query('COMMIT')
     console.log('Database initialised.')
