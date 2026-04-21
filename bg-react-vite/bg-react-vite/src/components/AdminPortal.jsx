@@ -151,11 +151,36 @@ function AttendancePanel({ db, helpers }) {
 }
 
 // ─── Staff CRUD ──────────────────────────────────────────────────────────────
-function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance }) {
+function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance, resetPassword }) {
   const [modal, setModal] = useState(null)  // null | 'create' | uid (edit)
   const [form, setForm]   = useState({ name: '', username: '', role: 'staff', branchIds: [], reportsTo: '' })
   const [editForm, setEditForm] = useState(null)
   const [balanceUid, setBalanceUid] = useState(null)
+  const [resetUid, setResetUid]   = useState(null)
+  const [resetForm, setResetForm] = useState({ next: '', confirm: '' })
+  const [resetError, setResetError]   = useState('')
+  const [resetSuccess, setResetSuccess] = useState('')
+
+  const handleResetPassword = async () => {
+    setResetError('')
+    setResetSuccess('')
+    if (resetForm.next.length < 6) return setResetError('Password must be at least 6 characters.')
+    if (resetForm.next !== resetForm.confirm) return setResetError('Passwords do not match.')
+    try {
+      await resetPassword(resetUid, resetForm.next)
+      setResetSuccess('Password reset successfully.')
+      setResetForm({ next: '', confirm: '' })
+    } catch (err) {
+      setResetError(err.message || 'Failed to reset password.')
+    }
+  }
+
+  const openResetPassword = (uid) => {
+    setResetUid(uid)
+    setResetForm({ next: '', confirm: '' })
+    setResetError('')
+    setResetSuccess('')
+  }
 
   const nonAdminUsers = Object.entries(db.users).filter(([, u]) => u.role !== 'admin')
 
@@ -240,6 +265,7 @@ function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance })
                     <div className="stack-inline">
                       <button className="ghost-btn" onClick={() => openEdit(uid)}>Edit</button>
                       <button className="ghost-btn" onClick={() => setBalanceUid(uid)}>Leave bal.</button>
+                      <button className="ghost-btn" onClick={() => openResetPassword(uid)}>Reset pwd</button>
                       <button className="ghost-btn danger-text" onClick={() => { if (confirm(`Delete ${u.name}?`)) deleteUser(uid) }}>Delete</button>
                     </div>
                   </td>
@@ -352,6 +378,21 @@ function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance })
               </tbody>
             </table>
           </div>
+        </Modal>
+      )}
+
+      {/* Reset password modal */}
+      {resetUid && (
+        <Modal title={`Reset password — ${db.users[resetUid]?.name}`} onClose={() => setResetUid(null)}>
+          <label className="field"><span>New password</span>
+            <input type="password" value={resetForm.next} onChange={(e) => setResetForm({ ...resetForm, next: e.target.value })} />
+          </label>
+          <label className="field"><span>Confirm new password</span>
+            <input type="password" value={resetForm.confirm} onChange={(e) => setResetForm({ ...resetForm, confirm: e.target.value })} />
+          </label>
+          {resetError   && <div className="error-box">{resetError}</div>}
+          {resetSuccess && <div className="success-box">{resetSuccess}</div>}
+          <button className="primary-btn" onClick={handleResetPassword}>Reset password</button>
         </Modal>
       )}
     </div>
@@ -605,7 +646,7 @@ const TABS = [
 export default function AdminPortal({ state }) {
   const {
     db, currentUserId, currentUser, helpers,
-    actLeave, addUser, saveStaff, deleteUser, setBalance,
+    actLeave, addUser, saveStaff, deleteUser, setBalance, resetPassword,
     addBranch, saveBranch, deleteBranch,
     addShiftTemplate, saveShiftTemplate, deleteShiftTemplate,
     assignShift, deleteShift,
@@ -637,7 +678,7 @@ export default function AdminPortal({ state }) {
         <SchedulePanel db={db} helpers={helpers} assignShift={assignShift} deleteShift={deleteShift} currentUserId={currentUserId} />
       )}
       {activeTab === 'staff' && (
-        <StaffPanel db={db} helpers={helpers} addUser={addUser} saveStaff={saveStaff} deleteUser={deleteUser} setBalance={setBalance} />
+        <StaffPanel db={db} helpers={helpers} addUser={addUser} saveStaff={saveStaff} deleteUser={deleteUser} setBalance={setBalance} resetPassword={resetPassword} />
       )}
       {activeTab === 'branches' && (
         <BranchPanel db={db} helpers={helpers} addBranch={addBranch} saveBranch={saveBranch} deleteBranch={deleteBranch} />

@@ -122,6 +122,14 @@ export function usePortalState() {
     }
   }
 
+  const changePassword = async (currentPassword, newPassword) => {
+    await api.changePassword(currentPassword, newPassword)
+  }
+
+  const resetPassword = async (uid, newPassword) => {
+    await api.resetPassword(uid, newPassword)
+  }
+
   const logout = () => {
     clearToken()
     setCurrentUserId(null)
@@ -315,6 +323,8 @@ export function usePortalState() {
     // auth
     login,
     setupPassword,
+    changePassword,
+    resetPassword,
     logout,
     // clock
     clockIn,
