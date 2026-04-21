@@ -35,7 +35,7 @@ export default function AppShell({ user, tabs, activeTab, onTabChange, onLogout,
     <div>
       <header className="topbar">
         <div className="brand-row">
-          <div className="brand-mini">BG</div>
+          <img src="/bg-logo.png" alt="BG" className="brand-mini" />
           <div className="topbar-title">Breakfast Grill</div>
         </div>
         <div className="topbar-right">

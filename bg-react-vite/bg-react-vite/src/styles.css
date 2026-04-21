@@ -31,9 +31,9 @@ a { color: inherit; }
 .screen-shell.center { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .auth-card { width: min(100%, 390px); padding: 32px; }
 .brand-stack { display: grid; justify-items: center; gap: 6px; margin-bottom: 20px; }
-.brand-icon, .brand-mini { background: linear-gradient(135deg, var(--toast-brown), var(--amber-dark)); color: white; border-radius: 14px; display: grid; place-items: center; font-weight: 700; }
+.brand-icon, .brand-mini { background: transparent; border-radius: 0; display: block; object-fit: contain; }
 .brand-icon { width: 56px; height: 56px; }
-.brand-mini { width: 30px; height: 30px; border-radius: 8px; font-size: 12px; }
+.brand-mini { width: 30px; height: 30px; filter: brightness(0) invert(1); }
 .brand-name, .topbar-title, .section-title, .clock-time { font-weight: 700; }
 .brand-name { font-size: 22px; color: var(--toast-brown); }
 .brand-tag, .auth-sub, .muted-copy, .hint, .stat-sub { color: var(--muted); }
