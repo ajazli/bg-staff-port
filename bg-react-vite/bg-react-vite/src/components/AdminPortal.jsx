@@ -247,6 +247,8 @@ function BreakagesPanel({ db, helpers }) {
 }
 
 // ─── Staff Profile View ───────────────────────────────────────────────────────
+const MAX_AVATAR_ADMIN = 5 * 1024 * 1024
+
 function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPassword, deleteUser, setBalance, onBack }) {
   const u = db.users[uid]
   const [memo, setMemo]           = useState(u?.memo || '')
@@ -255,6 +257,32 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
   const [resetForm, setResetForm] = useState({ next: '', confirm: '' })
   const [resetError, setResetError]     = useState('')
   const [resetSuccess, setResetSuccess] = useState('')
+
+  const [editAvatar, setEditAvatar]   = useState(u?.avatarUrl || '')
+  const [editBirthday, setEditBirthday] = useState(u?.birthday || '')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileSuccess, setProfileSuccess] = useState('')
+  const avatarFileRef = useRef()
+
+  const handleAvatarFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > MAX_AVATAR_ADMIN) { alert('Image must be under 5 MB.'); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setEditAvatar(ev.target.result)
+    reader.readAsDataURL(file)
+  }
+
+  const saveProfileData = async () => {
+    setProfileSaving(true)
+    try {
+      await saveStaff(uid, { avatarUrl: editAvatar || null, birthday: editBirthday || null })
+      setProfileSuccess('Saved!')
+      setTimeout(() => setProfileSuccess(''), 2500)
+    } finally {
+      setProfileSaving(false)
+    }
+  }
 
   const saveMemo = async () => {
     await saveStaff(uid, { memo })
@@ -288,8 +316,13 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
     <div>
       <div className="profile-header">
         <button className="ghost-btn profile-back-btn" onClick={onBack}>← Back</button>
-        <span className="profile-name">{u.name}</span>
-        <Badge tone={u.role === 'team_lead' ? 'info' : 'default'}>{helpers.cap(u.role)}</Badge>
+        {editAvatar
+          ? <img src={editAvatar} alt={u.initials} className="avatar-lg" />
+          : <div className="avatar-lg-initials">{u.initials}</div>}
+        <div>
+          <span className="profile-name">{u.name}</span>
+          <Badge tone={u.role === 'team_lead' ? 'info' : 'default'}>{helpers.cap(u.role)}</Badge>
+        </div>
       </div>
 
       <div className="profile-grid-top">
@@ -308,6 +341,40 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
               <strong className="detail-value">{value}</strong>
             </div>
           ))}
+
+          {/* Avatar + birthday edit */}
+          <div style={{ marginTop: 14 }}>
+            <div className="avatar-upload-row" style={{ marginBottom: 10 }}>
+              {editAvatar
+                ? <img src={editAvatar} alt="avatar" className="avatar-lg" />
+                : <div className="avatar-lg-initials">{u.initials}</div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <button className="ghost-btn" style={{ padding: '5px 10px', fontSize: 13 }}
+                  onClick={() => avatarFileRef.current?.click()}>
+                  {editAvatar ? 'Change photo' : 'Upload photo'}
+                </button>
+                {editAvatar && (
+                  <button className="ghost-btn danger-text" style={{ padding: '5px 10px', fontSize: 13 }}
+                    onClick={() => { setEditAvatar(''); if (avatarFileRef.current) avatarFileRef.current.value = '' }}>
+                    Remove photo
+                  </button>
+                )}
+                <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile} />
+              </div>
+            </div>
+            <label className="field">
+              <span>Birthday</span>
+              <input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} />
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button className="primary-btn" style={{ padding: '8px 14px', fontSize: 13 }}
+                onClick={saveProfileData} disabled={profileSaving}>
+                {profileSaving ? 'Saving…' : 'Save photo & birthday'}
+              </button>
+              {profileSuccess && <span style={{ color: '#2e7d32', fontSize: 13, fontWeight: 600 }}>{profileSuccess}</span>}
+            </div>
+          </div>
+
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button className="ghost-btn" onClick={() => setShowReset((r) => !r)}>
               {showReset ? 'Cancel' : 'Reset password'}
@@ -1036,6 +1103,15 @@ export default function AdminPortal({ state }) {
   const notifiedRef  = useRef(new Set())
   const [lateAlerts, setLateAlerts] = useState([])
 
+  const todayBirthdays = useMemo(() => {
+    if (!db) return []
+    const today = new Date()
+    const mmdd  = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    return Object.entries(db.users)
+      .filter(([, u]) => u.birthday && String(u.birthday).slice(5, 10) === mmdd)
+      .map(([uid, u]) => ({ uid, name: u.name }))
+  }, [db])
+
   // Auto-refresh every 60 seconds to catch late clock-ins
   useEffect(() => {
     const id = setInterval(() => { loadData().catch(console.error) }, 60000)
@@ -1084,6 +1160,17 @@ export default function AdminPortal({ state }) {
              : t.id === 'breakages'  && breakageCount > 0 ? `${t.label} (${breakageCount})`
              : t.label,
       }))}>
+
+      {/* Birthday banners */}
+      {todayBirthdays.length > 0 && (
+        <div className="birthday-bar">
+          {todayBirthdays.map(({ uid, name }) => (
+            <div key={uid} className="birthday-item">
+              🎂 Today is {name}'s birthday! 🎉
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Late-arrival alert banners */}
       {lateAlerts.length > 0 && (

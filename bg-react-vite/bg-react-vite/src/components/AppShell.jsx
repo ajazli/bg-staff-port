@@ -45,7 +45,9 @@ export default function AppShell({ user, tabs, activeTab, onTabChange, onLogout,
             title={onChangePassword ? 'Change password' : undefined}
             disabled={!onChangePassword}
           >
-            <div className="avatar">{user.initials}</div>
+            {user.avatarUrl
+              ? <img src={user.avatarUrl} alt={user.initials} className="avatar avatar-img" />
+              : <div className="avatar">{user.initials}</div>}
             <span className="user-short">{user.name.split(' ')[0]}</span>
           </button>
           {user.role === 'admin'     && <Badge tone="info">Admin</Badge>}
