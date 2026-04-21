@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import { LEAVE_TYPES, WORKDAY_OPTIONS } from '../data/mockData'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { localDateToStr } from '../utils'
 import AppShell from './AppShell'
 import Badge from './Badge'
@@ -247,155 +246,399 @@ function BreakagesPanel({ db, helpers }) {
   )
 }
 
-// ─── Staff CRUD ──────────────────────────────────────────────────────────────
-function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance, resetPassword }) {
-  const [modal, setModal] = useState(null)  // null | 'create' | uid (edit)
-  const [form, setForm]   = useState({ name: '', username: '', role: 'staff', branchIds: [], reportsTo: '' })
-  const [editForm, setEditForm] = useState(null)
-  const [balanceUid, setBalanceUid] = useState(null)
-  const [resetUid, setResetUid]   = useState(null)
+// ─── Staff Profile View ───────────────────────────────────────────────────────
+function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPassword, deleteUser, setBalance, onBack }) {
+  const u = db.users[uid]
+  const [memo, setMemo]           = useState(u?.memo || '')
+  const [memoSaved, setMemoSaved] = useState(false)
+  const [showReset, setShowReset] = useState(false)
   const [resetForm, setResetForm] = useState({ next: '', confirm: '' })
-  const [resetError, setResetError]   = useState('')
+  const [resetError, setResetError]     = useState('')
   const [resetSuccess, setResetSuccess] = useState('')
 
-  const handleResetPassword = async () => {
-    setResetError('')
-    setResetSuccess('')
+  const saveMemo = async () => {
+    await saveStaff(uid, { memo })
+    setMemoSaved(true)
+    setTimeout(() => setMemoSaved(false), 2500)
+  }
+
+  const handleReset = async () => {
+    setResetError(''); setResetSuccess('')
     if (resetForm.next.length < 6) return setResetError('Password must be at least 6 characters.')
     if (resetForm.next !== resetForm.confirm) return setResetError('Passwords do not match.')
     try {
-      await resetPassword(resetUid, resetForm.next)
+      await resetPassword(uid, resetForm.next)
       setResetSuccess('Password reset successfully.')
       setResetForm({ next: '', confirm: '' })
-    } catch (err) {
-      setResetError(err.message || 'Failed to reset password.')
-    }
+    } catch (err) { setResetError(err.message || 'Failed.') }
   }
 
-  const openResetPassword = (uid) => {
-    setResetUid(uid)
-    setResetForm({ next: '', confirm: '' })
-    setResetError('')
-    setResetSuccess('')
-  }
+  const DAY_NAMES = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 0: 'Sun' }
+  const workDayStr = (u?.workDays || [])
+    .slice().sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b))
+    .map((d) => DAY_NAMES[d]).join(', ')
 
-  const nonAdminUsers = Object.entries(db.users).filter(([, u]) => u.role !== 'admin')
+  const attendance = (db.attendance[uid] || []).slice(0, 15)
+  const leaves     = (db.leaves[uid]     || []).slice(0, 15)
+  const breakages  = (db.breakages?.[uid] || []).slice(0, 15)
 
-  const openCreate = () => {
-    setForm({ name: '', username: '', role: 'staff', branchIds: [], reportsTo: '' })
-    setModal('create')
-  }
-
-  const openEdit = (uid) => {
-    const u = db.users[uid]
-    setEditForm({ ...u, uid, workDays: [...(u.workDays || [1,2,3,4,5])] })
-    setModal(uid)
-  }
-
-  const handleCreate = () => {
-    if (!form.name.trim() || !form.username.trim()) return
-    addUser({ ...form, reportsTo: form.reportsTo || null })
-    setModal(null)
-  }
-
-  const handleSave = () => {
-    if (!editForm) return
-    const { uid, ...payload } = editForm
-    saveStaff(uid, payload)
-    setModal(null)
-  }
-
-  const toggleBranch = (setter, branchId) => {
-    setter((prev) => ({
-      ...prev,
-      branchIds: prev.branchIds.includes(branchId)
-        ? prev.branchIds.filter((id) => id !== branchId)
-        : [...prev.branchIds, branchId],
-    }))
-  }
-
-  const toggleDay = (setter, val) => {
-    setter((prev) => ({
-      ...prev,
-      workDays: prev.workDays.includes(val)
-        ? prev.workDays.filter((d) => d !== val)
-        : [...prev.workDays, val],
-    }))
-  }
-
-  // Build hierarchy display
-  const renderTree = (uid, depth = 0) => {
-    const u = db.users[uid]
-    if (!u) return null
-    const reports = Object.entries(db.users).filter(([id, usr]) => usr.reportsTo === uid && id !== uid)
-    return (
-      <div key={uid} style={{ marginLeft: depth * 20 }}>
-        <div className="tree-node">
-          <span className="tree-dot" />
-          <span className="tree-name">{u.name}</span>
-          <Badge tone={u.role === 'team_lead' ? 'info' : 'default'}>{helpers.cap(u.role)}</Badge>
-        </div>
-        {reports.map(([id]) => renderTree(id, depth + 1))}
-      </div>
-    )
-  }
+  if (!u) return null
 
   return (
-    <div className="two-col admin-layout">
-      {/* Staff table */}
-      <div>
-        <div className="section-header">
-          <div className="section-title">Team members</div>
-          <button className="primary-btn" onClick={openCreate}>+ Add staff</button>
+    <div>
+      <div className="profile-header">
+        <button className="ghost-btn profile-back-btn" onClick={onBack}>← Back</button>
+        <span className="profile-name">{u.name}</span>
+        <Badge tone={u.role === 'team_lead' ? 'info' : 'default'}>{helpers.cap(u.role)}</Badge>
+      </div>
+
+      <div className="profile-grid-top">
+        {/* Details */}
+        <div className="panel">
+          <div className="section-title">Details</div>
+          {[
+            ['Username',   uid],
+            ['Branches',   helpers.getUserBranches(uid).map((b) => b.name).join(', ') || '—'],
+            ['Hours',      `${u.expectedStart || '—'} – ${u.expectedEnd || '—'}`],
+            ['Work days',  workDayStr || '—'],
+            ['Reports to', u.reportsTo ? (db.users[u.reportsTo]?.name || u.reportsTo) : '—'],
+          ].map(([label, value]) => (
+            <div key={label} className="detail-row">
+              <span className="detail-label">{label}</span>
+              <strong className="detail-value">{value}</strong>
+            </div>
+          ))}
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button className="ghost-btn" onClick={() => setShowReset((r) => !r)}>
+              {showReset ? 'Cancel' : 'Reset password'}
+            </button>
+            {showReset && (
+              <div>
+                <label className="field"><span>New password</span>
+                  <input type="password" value={resetForm.next} onChange={(e) => setResetForm({ ...resetForm, next: e.target.value })} />
+                </label>
+                <label className="field"><span>Confirm</span>
+                  <input type="password" value={resetForm.confirm} onChange={(e) => setResetForm({ ...resetForm, confirm: e.target.value })} />
+                </label>
+                {resetError   && <div className="error-box">{resetError}</div>}
+                {resetSuccess && <div className="success-box">{resetSuccess}</div>}
+                <button className="primary-btn" onClick={handleReset}>Reset password</button>
+              </div>
+            )}
+            <button className="ghost-btn danger-text"
+              onClick={() => { if (confirm(`Delete ${u.name}? This cannot be undone.`)) { deleteUser(uid); onBack() } }}>
+              Delete staff member
+            </button>
+          </div>
         </div>
-        <div className="table-card">
-          <table>
-            <thead><tr><th>Name</th><th>Role</th><th>Branch(es)</th><th>Reports to</th><th>Actions</th></tr></thead>
-            <tbody>
-              {nonAdminUsers.map(([uid, u]) => (
-                <tr key={uid}>
-                  <td>{u.name}</td>
-                  <td><Badge tone={u.role === 'team_lead' ? 'info' : 'default'}>{helpers.cap(u.role)}</Badge></td>
-                  <td>{helpers.getUserBranches(uid).map((b) => b.name).join(', ') || '—'}</td>
-                  <td>{u.reportsTo ? db.users[u.reportsTo]?.name || u.reportsTo : '—'}</td>
+
+        {/* Memo */}
+        <div className="panel">
+          <div className="section-title">Memo</div>
+          <textarea className="memo-textarea" value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="Notes about this staff member…" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8 }}>
+            <button className="primary-btn" onClick={saveMemo}>Save memo</button>
+            {memoSaved && <span style={{ color: '#2e7d32', fontSize: 13, fontWeight: 600 }}>Saved!</span>}
+          </div>
+        </div>
+      </div>
+
+      {/* Leave balances */}
+      <div className="section-title" style={{ marginTop: 4 }}>Leave balances</div>
+      <div className="balance-grid" style={{ marginBottom: 24 }}>
+        {(leaveTypes || []).map((lt) => {
+          const bal = db.balances[uid]?.[lt.id] || { total: 0, used: 0 }
+          return (
+            <div key={lt.id} className="balance-card" style={{ borderTop: `3px solid ${lt.color}` }}>
+              <div className="balance-title" style={{ color: lt.color }}>{lt.label || lt.name}</div>
+              <div className="balance-value" style={{ color: lt.color }}>{bal.total - bal.used}</div>
+              <div className="balance-sub">{bal.used} used of {bal.total}</div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Recent attendance */}
+      <div className="section-title">Recent attendance</div>
+      <div className="table-card" style={{ marginBottom: 20 }}>
+        <table>
+          <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Timing</th></tr></thead>
+          <tbody>
+            {attendance.length === 0
+              ? <tr><td colSpan="6" className="empty-cell">No attendance records</td></tr>
+              : attendance.map((rec) => (
+                <tr key={rec.id || rec.date}>
+                  <td>{helpers.fmtDate(rec.date)}</td>
+                  <td>{rec.in}</td>
+                  <td>{rec.out || '—'}</td>
+                  <td>{rec.hours || '—'}</td>
+                  <td>{rec.branchName}</td>
                   <td>
                     <div className="stack-inline">
-                      <button className="ghost-btn" onClick={() => openEdit(uid)}>Edit</button>
-                      <button className="ghost-btn" onClick={() => setBalanceUid(uid)}>Leave bal.</button>
-                      <button className="ghost-btn" onClick={() => openResetPassword(uid)}>Reset pwd</button>
-                      <button className="ghost-btn danger-text" onClick={() => { if (confirm(`Delete ${u.name}?`)) deleteUser(uid) }}>Delete</button>
+                      {helpers.getTimingBadges(rec).map((t) => (
+                        <Badge key={t} tone={t.includes('Late') || t.includes('early') ? 'warn' : 'success'}>{t}</Badge>
+                      ))}
                     </div>
                   </td>
                 </tr>
               ))}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
       </div>
 
-      {/* Hierarchy tree */}
-      <div className="panel">
-        <div className="section-title">Reporting hierarchy</div>
-        {renderTree('admin')}
-        {/* Unattached users */}
-        {Object.entries(db.users)
-          .filter(([id, u]) => u.reportsTo === null && id !== 'admin')
-          .map(([id]) => renderTree(id))}
+      {/* Leave history */}
+      <div className="section-title">Leave history</div>
+      <div className="table-card" style={{ marginBottom: 20 }}>
+        <table>
+          <thead><tr><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Reason</th><th>Status</th></tr></thead>
+          <tbody>
+            {leaves.length === 0
+              ? <tr><td colSpan="6" className="empty-cell">No leave records</td></tr>
+              : leaves.map((rec) => {
+                  const lt = helpers.getLeaveType(rec.type)
+                  return (
+                    <tr key={rec.id}>
+                      <td><span style={{ color: lt?.color }}>{rec.type}</span></td>
+                      <td>{helpers.fmtDate(rec.start)}</td>
+                      <td>{helpers.fmtDate(rec.end)}</td>
+                      <td>{rec.days}</td>
+                      <td className="td-reason">{rec.reason}</td>
+                      <td>
+                        <Badge tone={rec.status === 'approved' ? 'success' : rec.status === 'rejected' ? 'danger' : 'info'}>
+                          {helpers.cap(rec.status)}
+                        </Badge>
+                      </td>
+                    </tr>
+                  )
+                })}
+          </tbody>
+        </table>
       </div>
 
-      {/* Create user modal */}
-      {modal === 'create' && (
-        <Modal title="Add new team member" onClose={() => setModal(null)}>
-          <label className="field"><span>Full name</span><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-          <label className="field"><span>Username</span><input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} /></label>
+      {/* Breakage history */}
+      <div className="section-title">Breakage history</div>
+      <div className="table-card">
+        <table>
+          <thead><tr><th>Date</th><th>Time</th><th>Reason</th><th>Photo</th></tr></thead>
+          <tbody>
+            {breakages.length === 0
+              ? <tr><td colSpan="4" className="empty-cell">No breakage records</td></tr>
+              : breakages.map((b) => (
+                <tr key={b.id}>
+                  <td>{helpers.fmtDate(b.date)}</td>
+                  <td>{b.time || '—'}</td>
+                  <td className="td-reason">{b.reason}</td>
+                  <td>
+                    {b.attachmentUrl
+                      ? <a href={b.attachmentUrl} target="_blank" rel="noopener noreferrer" className="link-btn">View photo</a>
+                      : '—'}
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ─── Staff CRUD ──────────────────────────────────────────────────────────────
+function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, setBalance, resetPassword }) {
+  const [profileUid, setProfileUid] = useState(null)
+  const [createModal, setCreateModal] = useState(false)
+  const [createForm, setCreateForm]   = useState({ name: '', username: '', role: 'staff', branchIds: [], reportsTo: '' })
+  const [rowEdits, setRowEdits]       = useState({})
+  const [saving, setSaving]           = useState({})
+
+  const DAY_OPTIONS = [
+    { value: 1, label: 'M' }, { value: 2, label: 'Tu' }, { value: 3, label: 'W' },
+    { value: 4, label: 'Th' }, { value: 5, label: 'F' }, { value: 6, label: 'Sa' }, { value: 0, label: 'Su' },
+  ]
+
+  function initEdit(uid) {
+    const u   = db.users[uid]
+    const bal = db.balances[uid] || {}
+    return {
+      name:          u.name || '',
+      role:          u.role || 'staff',
+      branchIds:     [...(u.branchIds || [])],
+      expectedStart: u.expectedStart || '',
+      expectedEnd:   u.expectedEnd   || '',
+      workDays:      [...(u.workDays || [1, 2, 3, 4, 5])],
+      annual:  Number(bal['Annual Leave']?.total   ?? 14),
+      medical: Number(bal['Sick Leave']?.total     ?? 14),
+      phoil:   Number(bal['PH Off-in-Lieu']?.total ?? 0),
+      er:      Number(bal['NS Leave']?.total       ?? 0),
+    }
+  }
+
+  const getEdit = (uid) => rowEdits[uid] ?? initEdit(uid)
+
+  const setField = (uid, field, value) =>
+    setRowEdits((prev) => ({ ...prev, [uid]: { ...getEdit(uid), [field]: value } }))
+
+  const toggleDay = (uid, day) => {
+    const days = getEdit(uid).workDays
+    setField(uid, 'workDays', days.includes(day) ? days.filter((d) => d !== day) : [...days, day])
+  }
+
+  const toggleBranch = (uid, bid) => {
+    const ids = getEdit(uid).branchIds
+    setField(uid, 'branchIds', ids.includes(bid) ? ids.filter((i) => i !== bid) : [...ids, bid])
+  }
+
+  const handleSave = async (uid) => {
+    const edit = rowEdits[uid]
+    if (!edit) return
+    setSaving((prev) => ({ ...prev, [uid]: true }))
+    try {
+      await saveStaff(uid, {
+        name: edit.name, role: edit.role, branchIds: edit.branchIds,
+        expectedStart: edit.expectedStart, expectedEnd: edit.expectedEnd,
+        workDays: edit.workDays,
+      })
+      await Promise.all([
+        setBalance(uid, 'Annual Leave',   'total', edit.annual),
+        setBalance(uid, 'Sick Leave',     'total', edit.medical),
+        setBalance(uid, 'PH Off-in-Lieu', 'total', edit.phoil),
+        setBalance(uid, 'NS Leave',       'total', edit.er),
+      ])
+      setRowEdits((prev) => { const n = { ...prev }; delete n[uid]; return n })
+    } finally {
+      setSaving((prev) => { const n = { ...prev }; delete n[uid]; return n })
+    }
+  }
+
+  const handleCreate = async () => {
+    if (!createForm.name.trim() || !createForm.username.trim()) return
+    await addUser({ ...createForm, reportsTo: createForm.reportsTo || null })
+    setCreateModal(false)
+    setCreateForm({ name: '', username: '', role: 'staff', branchIds: [], reportsTo: '' })
+  }
+
+  const toggleCreateBranch = (bid) =>
+    setCreateForm((prev) => ({
+      ...prev,
+      branchIds: prev.branchIds.includes(bid) ? prev.branchIds.filter((i) => i !== bid) : [...prev.branchIds, bid],
+    }))
+
+  const nonAdminUsers = Object.entries(db.users).filter(([, u]) => u.role !== 'admin')
+
+  if (profileUid && db.users[profileUid]) {
+    return (
+      <StaffProfileView
+        uid={profileUid} db={db} helpers={helpers} leaveTypes={leaveTypes}
+        saveStaff={saveStaff} resetPassword={resetPassword}
+        deleteUser={deleteUser} setBalance={setBalance}
+        onBack={() => setProfileUid(null)}
+      />
+    )
+  }
+
+  return (
+    <div>
+      <div className="section-header">
+        <div className="section-title">Team members</div>
+        <button className="primary-btn" onClick={() => setCreateModal(true)}>+ Add staff</button>
+      </div>
+
+      <div className="table-card">
+        <table className="staff-inline-table">
+          <thead>
+            <tr>
+              <th>Name</th><th>Username</th><th>Role</th><th>Branches</th>
+              <th>Start</th><th>End</th><th>Work days</th>
+              <th title="Annual Leave">Annual</th>
+              <th title="Sick Leave (MC)">Medical</th>
+              <th title="PH Off-in-Lieu">PH OIL</th>
+              <th title="NS Leave (Emergency Reservist)">ER</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {nonAdminUsers.map(([uid]) => {
+              const edit  = getEdit(uid)
+              const dirty = !!rowEdits[uid]
+              return (
+                <tr key={uid} className={dirty ? 'row-dirty' : ''}>
+                  <td>
+                    <input className="si-input" value={edit.name}
+                      onChange={(e) => setField(uid, 'name', e.target.value)} />
+                  </td>
+                  <td className="uid-cell">{uid}</td>
+                  <td>
+                    <select className="si-select" value={edit.role}
+                      onChange={(e) => setField(uid, 'role', e.target.value)}>
+                      <option value="staff">Staff</option>
+                      <option value="team_lead">Team Lead</option>
+                    </select>
+                  </td>
+                  <td>
+                    <div className="si-chips">
+                      {db.branches.map((b) => (
+                        <button key={b.id} type="button"
+                          className={`day-toggle${edit.branchIds.includes(b.id) ? ' active' : ''}`}
+                          style={edit.branchIds.includes(b.id)
+                            ? { background: b.color + '22', color: b.color, borderColor: b.color }
+                            : {}}
+                          onClick={() => toggleBranch(uid, b.id)}>
+                          {b.name.length > 7 ? b.name.slice(0, 6) + '…' : b.name}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td><input type="time" className="si-time" value={edit.expectedStart} onChange={(e) => setField(uid, 'expectedStart', e.target.value)} /></td>
+                  <td><input type="time" className="si-time" value={edit.expectedEnd}   onChange={(e) => setField(uid, 'expectedEnd',   e.target.value)} /></td>
+                  <td>
+                    <div className="si-chips">
+                      {DAY_OPTIONS.map((d) => (
+                        <button key={d.value} type="button"
+                          className={`day-toggle${edit.workDays.includes(d.value) ? ' active' : ''}`}
+                          onClick={() => toggleDay(uid, d.value)}>
+                          {d.label}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td><input type="number" className="si-num" min={0} value={edit.annual}  onChange={(e) => setField(uid, 'annual',  Number(e.target.value))} /></td>
+                  <td><input type="number" className="si-num" min={0} value={edit.medical} onChange={(e) => setField(uid, 'medical', Number(e.target.value))} /></td>
+                  <td><input type="number" className="si-num" min={0} value={edit.phoil}   onChange={(e) => setField(uid, 'phoil',   Number(e.target.value))} /></td>
+                  <td><input type="number" className="si-num" min={0} value={edit.er}      onChange={(e) => setField(uid, 'er',      Number(e.target.value))} /></td>
+                  <td>
+                    <div className="stack-inline">
+                      <button className="ghost-btn si-view-btn" onClick={() => setProfileUid(uid)}>View</button>
+                      {dirty && (
+                        <button className="primary-btn si-save-btn" onClick={() => handleSave(uid)} disabled={saving[uid]}>
+                          {saving[uid] ? '…' : 'Save'}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {createModal && (
+        <Modal title="Add new team member" onClose={() => setCreateModal(false)}>
+          <label className="field"><span>Full name</span>
+            <input value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
+          </label>
+          <label className="field"><span>Username</span>
+            <input value={createForm.username} onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })} />
+          </label>
           <label className="field"><span>Role</span>
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+            <select value={createForm.role} onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}>
               <option value="staff">Staff</option>
               <option value="team_lead">Team Lead</option>
             </select>
           </label>
           <label className="field"><span>Reports to</span>
-            <select value={form.reportsTo} onChange={(e) => setForm({ ...form, reportsTo: e.target.value })}>
+            <select value={createForm.reportsTo} onChange={(e) => setCreateForm({ ...createForm, reportsTo: e.target.value })}>
               <option value="">— None —</option>
               {Object.entries(db.users).filter(([, u]) => u.role !== 'staff').map(([id, u]) => (
                 <option key={id} value={id}>{u.name} ({helpers.cap(u.role)})</option>
@@ -403,93 +646,16 @@ function StaffPanel({ db, helpers, addUser, saveStaff, deleteUser, setBalance, r
             </select>
           </label>
           <div className="field"><span>Branches</span>
-            <div className="check-grid">{db.branches.map((b) => (
-              <label className="check-chip" key={b.id}>
-                <input type="checkbox" checked={form.branchIds.includes(b.id)} onChange={() => toggleBranch(setForm, b.id)} /> {b.name}
-              </label>
-            ))}</div>
+            <div className="check-grid">
+              {db.branches.map((b) => (
+                <label className="check-chip" key={b.id}>
+                  <input type="checkbox" checked={createForm.branchIds.includes(b.id)} onChange={() => toggleCreateBranch(b.id)} />
+                  {b.name}
+                </label>
+              ))}
+            </div>
           </div>
           <button className="primary-btn" onClick={handleCreate}>Create account</button>
-        </Modal>
-      )}
-
-      {/* Edit user modal */}
-      {modal && modal !== 'create' && editForm && (
-        <Modal title={`Edit — ${editForm.name}`} onClose={() => setModal(null)} width={520}>
-          <div className="two-col-form">
-            <label className="field"><span>Full name</span><input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} /></label>
-            <label className="field"><span>Role</span>
-              <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
-                <option value="staff">Staff</option>
-                <option value="team_lead">Team Lead</option>
-              </select>
-            </label>
-            <label className="field"><span>Reports to</span>
-              <select value={editForm.reportsTo || ''} onChange={(e) => setEditForm({ ...editForm, reportsTo: e.target.value || null })}>
-                <option value="">— None —</option>
-                {Object.entries(db.users).filter(([id, u]) => id !== modal && u.role !== 'staff').map(([id, u]) => (
-                  <option key={id} value={id}>{u.name} ({helpers.cap(u.role)})</option>
-                ))}
-              </select>
-            </label>
-            <label className="field"><span>Expected start</span><input type="time" value={editForm.expectedStart} onChange={(e) => setEditForm({ ...editForm, expectedStart: e.target.value })} /></label>
-            <label className="field"><span>Expected end</span><input type="time" value={editForm.expectedEnd} onChange={(e) => setEditForm({ ...editForm, expectedEnd: e.target.value })} /></label>
-          </div>
-          <div className="field"><span>Work days</span>
-            <div className="check-grid">{WORKDAY_OPTIONS.map((opt) => (
-              <label className="check-chip" key={opt.value}>
-                <input type="checkbox" checked={(editForm.workDays || []).includes(opt.value)} onChange={() => toggleDay(setEditForm, opt.value)} /> {opt.label}
-              </label>
-            ))}</div>
-          </div>
-          <div className="field"><span>Branches</span>
-            <div className="check-grid">{db.branches.map((b) => (
-              <label className="check-chip" key={b.id}>
-                <input type="checkbox" checked={(editForm.branchIds || []).includes(b.id)} onChange={() => toggleBranch(setEditForm, b.id)} /> {b.name}
-              </label>
-            ))}</div>
-          </div>
-          <label className="field"><span>Memo</span><textarea value={editForm.memo || ''} onChange={(e) => setEditForm({ ...editForm, memo: e.target.value })} /></label>
-          <button className="primary-btn" onClick={handleSave}>Save changes</button>
-        </Modal>
-      )}
-
-      {/* Leave balance modal */}
-      {balanceUid && (
-        <Modal title={`Leave balances — ${db.users[balanceUid]?.name}`} onClose={() => setBalanceUid(null)} width={560}>
-          <div className="table-card">
-            <table>
-              <thead><tr><th>Leave type</th><th>Total (days)</th><th>Used</th><th>Remaining</th></tr></thead>
-              <tbody>
-                {(db.leaveTypes || LEAVE_TYPES).map((lt) => {
-                  const bal = db.balances[balanceUid]?.[lt.id] || { total: 0, used: 0 }
-                  return (
-                    <tr key={lt.id}>
-                      <td style={{ color: lt.color }}>{lt.label}</td>
-                      <td><input type="number" className="inline-input num-input" min={0} value={bal.total} onChange={(e) => setBalance(balanceUid, lt.id, 'total', e.target.value)} /></td>
-                      <td>{bal.used}</td>
-                      <td>{bal.total - bal.used}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Modal>
-      )}
-
-      {/* Reset password modal */}
-      {resetUid && (
-        <Modal title={`Reset password — ${db.users[resetUid]?.name}`} onClose={() => setResetUid(null)}>
-          <label className="field"><span>New password</span>
-            <input type="password" value={resetForm.next} onChange={(e) => setResetForm({ ...resetForm, next: e.target.value })} />
-          </label>
-          <label className="field"><span>Confirm new password</span>
-            <input type="password" value={resetForm.confirm} onChange={(e) => setResetForm({ ...resetForm, confirm: e.target.value })} />
-          </label>
-          {resetError   && <div className="error-box">{resetError}</div>}
-          {resetSuccess && <div className="success-box">{resetSuccess}</div>}
-          <button className="primary-btn" onClick={handleResetPassword}>Reset password</button>
         </Modal>
       )}
     </div>
@@ -861,12 +1027,49 @@ export default function AdminPortal({ state }) {
     addShiftTemplate, saveShiftTemplate, deleteShiftTemplate,
     assignShift, deleteShift,
     addCalendarEvent, deleteCalendarEvent,
-    changePassword,
-    logout,
+    changePassword, logout,
     addLeaveType, saveLeaveType, deleteLeaveType,
+    leaveTypes, loadData,
   } = state
 
   const [activeTab, setActiveTab] = useState('attendance')
+  const notifiedRef  = useRef(new Set())
+  const [lateAlerts, setLateAlerts] = useState([])
+
+  // Auto-refresh every 60 seconds to catch late clock-ins
+  useEffect(() => {
+    const id = setInterval(() => { loadData().catch(console.error) }, 60000)
+    return () => clearInterval(id)
+  }, [loadData])
+
+  // Detect staff who are ≥15 min late and fire dismissable alerts
+  useEffect(() => {
+    if (!db?.activeSessions) return
+    const newAlerts = []
+    Object.entries(db.activeSessions).forEach(([uid, session]) => {
+      const user     = db.users[uid]
+      const shift    = helpers.getTodayShift(uid)
+      const expStart = shift?.startTime || user?.expectedStart || ''
+      if (!expStart || !session.startedAt) return
+      const clockedAt = new Date(session.startedAt)
+      const [h, m]    = expStart.split(':').map(Number)
+      const expected  = new Date(clockedAt)
+      expected.setHours(h, m, 0, 0)
+      const lateMin = Math.max(0, Math.round((clockedAt - expected) / 60000))
+      if (lateMin >= 15) {
+        const key = `${uid}-${session.startedAt}`
+        if (!notifiedRef.current.has(key)) {
+          notifiedRef.current.add(key)
+          newAlerts.push({ uid, name: user?.name || uid, lateMin, key })
+        }
+      }
+    })
+    if (newAlerts.length > 0) setLateAlerts((prev) => [...prev, ...newAlerts])
+  }, [db?.activeSessions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dismissAlert = useCallback((key) => {
+    setLateAlerts((prev) => prev.filter((a) => a.key !== key))
+  }, [])
 
   const pendingCount  = Object.values(db.leaves).flat().filter((l) => l.status === 'pending').length
   const liveCount     = Object.keys(db.activeSessions || {}).length
@@ -876,42 +1079,40 @@ export default function AdminPortal({ state }) {
     <AppShell user={currentUser} onLogout={logout} onChangePassword={changePassword} activeTab={activeTab} onTabChange={setActiveTab}
       tabs={TABS.map((t) => ({
         ...t,
-        label: t.id === 'leaves'    && pendingCount  > 0 ? `${t.label} (${pendingCount})`
+        label: t.id === 'leaves'     && pendingCount  > 0 ? `${t.label} (${pendingCount})`
              : t.id === 'attendance' && liveCount     > 0 ? `${t.label} ● ${liveCount}`
              : t.id === 'breakages'  && breakageCount > 0 ? `${t.label} (${breakageCount})`
              : t.label,
       }))}>
 
-      {activeTab === 'attendance' && (
-        <AttendancePanel db={db} helpers={helpers} />
+      {/* Late-arrival alert banners */}
+      {lateAlerts.length > 0 && (
+        <div className="late-alert-bar">
+          {lateAlerts.map((alert) => (
+            <div key={alert.key} className="late-alert-item">
+              <span>⚠ {alert.name} is {alert.lateMin} min late</span>
+              <button className="late-alert-dismiss" onClick={() => dismissAlert(alert.key)}>✕</button>
+            </div>
+          ))}
+        </div>
       )}
-      {activeTab === 'leaves' && (
-        <LeavesPanel db={db} helpers={helpers} actLeave={actLeave} currentUserId={currentUserId} />
+
+      {activeTab === 'attendance' && <AttendancePanel db={db} helpers={helpers} />}
+      {activeTab === 'leaves'     && <LeavesPanel db={db} helpers={helpers} actLeave={actLeave} currentUserId={currentUserId} />}
+      {activeTab === 'breakages'  && <BreakagesPanel db={db} helpers={helpers} />}
+      {activeTab === 'schedule'   && <SchedulePanel db={db} helpers={helpers} assignShift={assignShift} deleteShift={deleteShift} currentUserId={currentUserId} />}
+      {activeTab === 'staff'      && (
+        <StaffPanel db={db} helpers={helpers} leaveTypes={leaveTypes}
+          addUser={addUser} saveStaff={saveStaff} deleteUser={deleteUser}
+          setBalance={setBalance} resetPassword={resetPassword} />
       )}
-      {activeTab === 'breakages' && (
-        <BreakagesPanel db={db} helpers={helpers} />
-      )}
-      {activeTab === 'schedule' && (
-        <SchedulePanel db={db} helpers={helpers} assignShift={assignShift} deleteShift={deleteShift} currentUserId={currentUserId} />
-      )}
-      {activeTab === 'staff' && (
-        <StaffPanel db={db} helpers={helpers} addUser={addUser} saveStaff={saveStaff} deleteUser={deleteUser} setBalance={setBalance} resetPassword={resetPassword} />
-      )}
-      {activeTab === 'branches' && (
-        <BranchPanel db={db} helpers={helpers} addBranch={addBranch} saveBranch={saveBranch} deleteBranch={deleteBranch} />
-      )}
-      {activeTab === 'templates' && (
-        <TemplatesPanel db={db} addShiftTemplate={addShiftTemplate} saveShiftTemplate={saveShiftTemplate} deleteShiftTemplate={deleteShiftTemplate} />
-      )}
-      {activeTab === 'leave-types' && (
-        <LeaveTypesPanel db={db} addLeaveType={addLeaveType} saveLeaveType={saveLeaveType} deleteLeaveType={deleteLeaveType} />
-      )}
-      {activeTab === 'calendar' && (
-        <CalendarView
-          db={db} helpers={helpers}
+      {activeTab === 'branches'   && <BranchPanel db={db} helpers={helpers} addBranch={addBranch} saveBranch={saveBranch} deleteBranch={deleteBranch} />}
+      {activeTab === 'templates'  && <TemplatesPanel db={db} addShiftTemplate={addShiftTemplate} saveShiftTemplate={saveShiftTemplate} deleteShiftTemplate={deleteShiftTemplate} />}
+      {activeTab === 'leave-types' && <LeaveTypesPanel db={db} addLeaveType={addLeaveType} saveLeaveType={saveLeaveType} deleteLeaveType={deleteLeaveType} />}
+      {activeTab === 'calendar'   && (
+        <CalendarView db={db} helpers={helpers}
           currentUserId={currentUserId} currentUser={currentUser}
-          onAddEvent={addCalendarEvent} onDeleteEvent={deleteCalendarEvent}
-        />
+          onAddEvent={addCalendarEvent} onDeleteEvent={deleteCalendarEvent} />
       )}
     </AppShell>
   )
