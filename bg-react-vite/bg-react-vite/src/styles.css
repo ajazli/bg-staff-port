@@ -248,6 +248,18 @@ th { border-top: none; background: var(--bg-warm); font-size: 11px; text-transfo
 .loading-wrap { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .loading-text { color: var(--muted); font-size: 15px; }
 
+/* ─── Leave history responsive ───────────────────────────────────────────────── */
+.leave-table-desktop { display: block; }
+.leave-cards-mobile  { display: none; }
+
+.leave-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(91,127,184,.06); }
+.leave-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
+.leave-card-type { font-weight: 700; font-size: 15px; }
+.leave-card-dates { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.leave-card-days { font-weight: 600; color: var(--charcoal); }
+.leave-card-reason { font-size: 13px; color: var(--charcoal); margin-bottom: 8px; padding: 8px 10px; background: var(--bg-warm); border-radius: 8px; }
+.leave-card-footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+
 /* ─── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }
@@ -257,6 +269,10 @@ th { border-top: none; background: var(--bg-warm); font-size: 11px; text-transfo
   .cal-cell { min-height: 60px; }
   .cal-chip { display: none; }
   .cal-chip-more { display: block; }
+}
+@media (max-width: 640px) {
+  .leave-table-desktop { display: none; }
+  .leave-cards-mobile  { display: block; }
 }
 @media (max-width: 600px) {
   .content { padding: 12px; }
