@@ -89,6 +89,26 @@ router.delete('/:id', requireAdmin, async (req, res) => {
   }
 })
 
+// Reset password (admin only)
+router.post('/:id/reset-password', requireAdmin, async (req, res) => {
+  try {
+    const { newPassword } = req.body
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' })
+    }
+    const hash = await bcrypt.hash(newPassword, 10)
+    const { rows } = await pool.query(
+      'UPDATE users SET password_hash = $1, must_set_pw = false WHERE id = $2 RETURNING id',
+      [hash, req.params.id]
+    )
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' })
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 // Update leave balance (admin only)
 router.put('/:id/balance', requireAdmin, async (req, res) => {
   try {

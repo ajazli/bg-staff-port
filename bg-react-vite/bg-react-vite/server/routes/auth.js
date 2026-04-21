@@ -57,6 +57,28 @@ router.post('/setup-password', async (req, res) => {
   }
 })
 
+router.post('/change-password', authenticate, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+    if (!currentPassword || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters.' })
+    }
+    const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.userId])
+    const user = rows[0]
+    if (!user) return res.status(404).json({ error: 'User not found' })
+
+    const valid = await bcrypt.compare(currentPassword, user.password_hash || '')
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect.' })
+
+    const hash = await bcrypt.hash(newPassword, 10)
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId])
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 router.get('/me', authenticate, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT id, name, initials, role FROM users WHERE id = $1', [req.user.userId])

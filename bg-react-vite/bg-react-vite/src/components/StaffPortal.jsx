@@ -418,6 +418,48 @@ function LeaveHistoryTab({ userId, db, helpers, onRevokeLeave }) {
   )
 }
 
+// ─── Change Password ──────────────────────────────────────────────────────────
+function ChangePasswordTab({ onChangePassword }) {
+  const [form, setForm]       = useState({ current: '', next: '', confirm: '' })
+  const [error, setError]     = useState('')
+  const [success, setSuccess] = useState('')
+
+  const handleSubmit = async () => {
+    setError('')
+    setSuccess('')
+    if (!form.current) return setError('Please enter your current password.')
+    if (form.next.length < 6) return setError('New password must be at least 6 characters.')
+    if (form.next !== form.confirm) return setError('New passwords do not match.')
+    try {
+      await onChangePassword(form.current, form.next)
+      setForm({ current: '', next: '', confirm: '' })
+      setSuccess('Password changed successfully.')
+    } catch (err) {
+      setError(err.message || 'Failed to change password.')
+    }
+  }
+
+  return (
+    <section>
+      <div className="panel" style={{ maxWidth: 400 }}>
+        <div className="section-title">Change password</div>
+        <label className="field"><span>Current password</span>
+          <input type="password" value={form.current} onChange={(e) => setForm({ ...form, current: e.target.value })} />
+        </label>
+        <label className="field"><span>New password</span>
+          <input type="password" value={form.next} onChange={(e) => setForm({ ...form, next: e.target.value })} />
+        </label>
+        <label className="field"><span>Confirm new password</span>
+          <input type="password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} />
+        </label>
+        {error   && <div className="error-box">{error}</div>}
+        {success && <div className="success-box">{success}</div>}
+        <button className="primary-btn" onClick={handleSubmit}>Change password</button>
+      </div>
+    </section>
+  )
+}
+
 // ─── Main StaffPortal ─────────────────────────────────────────────────────────
 export default function StaffPortal({ state }) {
   const {
@@ -426,6 +468,7 @@ export default function StaffPortal({ state }) {
     submitLeave, revokeLeave,
     addCalendarEvent, deleteCalendarEvent,
     assignShift, deleteShift,
+    changePassword,
     logout,
   } = state
 
@@ -437,6 +480,7 @@ export default function StaffPortal({ state }) {
     { id: 'leave',    label: 'Apply leave' },
     { id: 'history',  label: 'My leaves' },
     { id: 'calendar', label: 'Calendar' },
+    { id: 'password', label: 'Change password' },
   ]
 
   const [activeTab, setActiveTab] = useState('clock')
@@ -487,6 +531,9 @@ export default function StaffPortal({ state }) {
           currentUserId={currentUserId} currentUser={currentUser}
           onAddEvent={addCalendarEvent} onDeleteEvent={deleteCalendarEvent}
         />
+      )}
+      {activeTab === 'password' && (
+        <ChangePasswordTab onChangePassword={changePassword} />
       )}
     </AppShell>
   )

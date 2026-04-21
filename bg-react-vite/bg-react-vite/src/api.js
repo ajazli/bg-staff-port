@@ -28,18 +28,20 @@ async function req(method, path, body) {
 
 export const api = {
   // Auth
-  login:         (username, password) => req('POST', '/auth/login',          { username, password }),
-  setupPassword: (userId, password)   => req('POST', '/auth/setup-password', { userId, password }),
-  me:            ()                   => req('GET',  '/auth/me'),
+  login:          (username, password)              => req('POST', '/auth/login',            { username, password }),
+  setupPassword:  (userId, password)               => req('POST', '/auth/setup-password',   { userId, password }),
+  changePassword: (currentPassword, newPassword)   => req('POST', '/auth/change-password',  { currentPassword, newPassword }),
+  me:             ()                               => req('GET',  '/auth/me'),
 
   // App data (single call returns everything)
   getAppData: () => req('GET', '/app-data'),
 
   // Users
-  createUser:  (data)              => req('POST',   '/users',              data),
-  updateUser:  (id, data)          => req('PUT',    `/users/${id}`,        data),
-  deleteUser:  (id)                => req('DELETE', `/users/${id}`),
-  setBalance:  (uid, leaveType, field, value) => req('PUT', `/users/${uid}/balance`, { leaveType, field, value }),
+  createUser:    (data)                        => req('POST',   '/users',                  data),
+  updateUser:    (id, data)                    => req('PUT',    `/users/${id}`,            data),
+  deleteUser:    (id)                          => req('DELETE', `/users/${id}`),
+  resetPassword: (id, newPassword)             => req('POST',   `/users/${id}/reset-password`, { newPassword }),
+  setBalance:    (uid, leaveType, field, value) => req('PUT',   `/users/${uid}/balance`,   { leaveType, field, value }),
 
   // Branches
   createBranch: (data) => req('POST',   '/branches',       data),
