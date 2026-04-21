@@ -16,7 +16,7 @@ export default function SetupScreen({ userId, onSave }) {
     <div className="screen-shell center">
       <form className="auth-card" onSubmit={handleSubmit}>
         <div className="brand-stack">
-          <div className="brand-icon">BG</div>
+          <img src="/bg-logo.png" alt="BG" className="brand-icon" />
           <div className="brand-name">Breakfast Grill</div>
         </div>
         <h2 className="setup-title">Welcome to the team!</h2>

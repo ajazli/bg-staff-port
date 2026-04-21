@@ -15,7 +15,7 @@ export default function App() {
     return (
       <div className="screen-shell center">
         <div className="loading-wrap">
-          <div className="brand-icon" style={{ marginBottom: 16 }}>BG</div>
+          <img src="/bg-logo.png" alt="BG" className="brand-icon" style={{ marginBottom: 16 }} />
           <div className="loading-text">Loading…</div>
         </div>
       </div>

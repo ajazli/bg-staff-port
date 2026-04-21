@@ -15,7 +15,7 @@ export default function LoginScreen({ onLogin }) {
     <div className="screen-shell center">
       <form className="auth-card" onSubmit={handleSubmit}>
         <div className="brand-stack">
-          <div className="brand-icon">BG</div>
+          <img src="/bg-logo.png" alt="BG" className="brand-icon" />
           <div className="brand-name">Breakfast Grill</div>
           <div className="brand-tag">Staff Portal</div>
         </div>
