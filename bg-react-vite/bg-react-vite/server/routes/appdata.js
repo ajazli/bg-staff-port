@@ -90,12 +90,28 @@ function transformTemplate(row) {
   }
 }
 
+function transformBreakage(row) {
+  return {
+    id:             row.id,
+    userId:         row.user_id,
+    date:           row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
+    time:           row.time || '',
+    reason:         row.reason,
+    attachmentName: row.attachment_name || '',
+    attachmentUrl:  row.attachment_url  || '',
+    createdAt:      row.created_at,
+  }
+}
+
 router.get('/', authenticate, async (req, res) => {
   try {
+    const uid   = req.user.userId
+    const isAdmin = req.user.role === 'admin'
+
     const [
       usersRes, branchesRes, templatesRes,
       attendRes, leavesRes, balancesRes,
-      schedulesRes, eventsRes, sessionsRes,
+      schedulesRes, eventsRes, sessionsRes, breakagesRes,
     ] = await Promise.all([
       pool.query('SELECT * FROM users ORDER BY created_at'),
       pool.query('SELECT * FROM branches ORDER BY name'),
@@ -106,6 +122,9 @@ router.get('/', authenticate, async (req, res) => {
       pool.query('SELECT * FROM schedules ORDER BY date'),
       pool.query('SELECT * FROM calendar_events ORDER BY date'),
       pool.query('SELECT * FROM active_sessions'),
+      isAdmin
+        ? pool.query('SELECT * FROM breakages ORDER BY date DESC, created_at DESC')
+        : pool.query('SELECT * FROM breakages WHERE user_id=$1 ORDER BY date DESC, created_at DESC', [uid]),
     ])
 
     // Build users map
@@ -115,12 +134,14 @@ router.get('/', authenticate, async (req, res) => {
     const attendMap    = groupByUser(attendRes.rows,    transformAttendance)
     const leavesMap    = groupByUser(leavesRes.rows,    transformLeave)
     const schedulesMap = groupByUser(schedulesRes.rows, transformSchedule)
+    const breakagesMap = groupByUser(breakagesRes.rows, transformBreakage)
 
     // Ensure every user has an entry in all maps
     Object.keys(users).forEach((uid) => {
       if (!attendMap[uid])    attendMap[uid]    = []
       if (!leavesMap[uid])    leavesMap[uid]    = []
       if (!schedulesMap[uid]) schedulesMap[uid] = []
+      if (!breakagesMap[uid]) breakagesMap[uid] = []
     })
 
     // Build balances: { userId: { leaveType: { total, used } } }
@@ -157,6 +178,7 @@ router.get('/', authenticate, async (req, res) => {
         createdBy: e.created_by,
       })),
       activeSessions,
+      breakages: breakagesMap,
     })
   } catch (err) {
     console.error(err)

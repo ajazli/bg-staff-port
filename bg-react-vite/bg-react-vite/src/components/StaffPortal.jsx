@@ -463,6 +463,130 @@ function LeaveHistoryTab({ userId, db, helpers, onRevokeLeave }) {
   )
 }
 
+// ─── Breakage Tab ────────────────────────────────────────────────────────────
+const MAX_IMG_BYTES = 5 * 1024 * 1024  // 5 MB
+
+function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
+  const today = new Date()
+  const todayStr = today.toISOString().slice(0, 10)
+  const nowStr   = today.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+  const INIT = { date: todayStr, time: nowStr, reason: '', attachment: null }
+  const [form, setForm]       = useState(INIT)
+  const [error, setError]     = useState('')
+  const [success, setSuccess] = useState('')
+  const imgRef = useRef()
+
+  const handleImg = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > MAX_IMG_BYTES) { setError('Image must be under 5 MB.'); return }
+    if (!file.type.startsWith('image/')) { setError('Only image files are accepted.'); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setForm((f) => ({ ...f, attachment: { name: file.name, url: ev.target.result } }))
+    reader.readAsDataURL(file)
+    setError('')
+  }
+
+  const handleSubmit = async () => {
+    setError('')
+    setSuccess('')
+    if (!form.date) return setError('Please select a date.')
+    if (!form.reason.trim()) return setError('Please describe what happened.')
+    try {
+      await onSubmitBreakage({
+        date: form.date, time: form.time, reason: form.reason,
+        attachmentName: form.attachment?.name || '',
+        attachmentUrl:  form.attachment?.url  || '',
+      })
+      setForm(INIT)
+      if (imgRef.current) imgRef.current.value = ''
+      setSuccess('Breakage report submitted.')
+      setTimeout(() => setSuccess(''), 4000)
+    } catch (err) {
+      setError(err.message || 'Failed to submit report.')
+    }
+  }
+
+  const myBreakages = (db.breakages?.[userId] || [])
+
+  return (
+    <section>
+      <div className="two-col breakage-layout">
+        {/* Submit form */}
+        <div className="panel">
+          <div className="section-title">Report a breakage</div>
+          <div className="two-col-form">
+            <label className="field">
+              <span>Date</span>
+              <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+            </label>
+            <label className="field">
+              <span>Time</span>
+              <input type="time" value={form.time} onChange={(e) => setForm({ ...form, time: e.target.value })} />
+            </label>
+          </div>
+          <label className="field">
+            <span>What was broken / what happened</span>
+            <textarea
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+              placeholder="Describe the item and how it broke…"
+              rows={4}
+            />
+          </label>
+          <div className="field">
+            <span>Photo of breakage <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></span>
+            <div className="upload-area" onClick={() => imgRef.current?.click()}>
+              {form.attachment
+                ? (
+                  <div className="breakage-preview">
+                    <img src={form.attachment.url} alt="preview" className="breakage-thumb" />
+                    <span className="breakage-fname">{form.attachment.name}</span>
+                  </div>
+                )
+                : <><span className="upload-icon">📷</span>Click to upload photo (JPG, PNG — max 5 MB)</>}
+            </div>
+            <input ref={imgRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImg} />
+          </div>
+          {form.attachment && (
+            <button
+              className="ghost-btn"
+              style={{ marginBottom: 12 }}
+              onClick={() => { setForm((f) => ({ ...f, attachment: null })); if (imgRef.current) imgRef.current.value = '' }}
+            >
+              Remove photo
+            </button>
+          )}
+          {error   && <div className="error-box">{error}</div>}
+          {success && <div className="success-box">{success}</div>}
+          <button className="primary-btn" onClick={handleSubmit}>Submit report</button>
+        </div>
+
+        {/* History */}
+        <div>
+          <div className="section-title">My breakage history</div>
+          {myBreakages.length === 0
+            ? <div className="table-card"><div className="empty-cell">No breakage reports yet</div></div>
+            : myBreakages.map((b) => (
+              <div key={b.id} className="breakage-card">
+                <div className="breakage-card-header">
+                  <span className="breakage-card-date">{helpers.fmtDate(b.date)}{b.time ? ` · ${b.time}` : ''}</span>
+                </div>
+                <div className="breakage-card-reason">{b.reason}</div>
+                {b.attachmentUrl && (
+                  <a href={b.attachmentUrl} target="_blank" rel="noreferrer" className="breakage-card-img-link">
+                    <img src={b.attachmentUrl} alt="breakage" className="breakage-card-img" />
+                  </a>
+                )}
+              </div>
+            ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ─── Change Password ──────────────────────────────────────────────────────────
 function ChangePasswordTab({ onChangePassword }) {
   const [form, setForm]       = useState({ current: '', next: '', confirm: '' })
@@ -513,6 +637,7 @@ export default function StaffPortal({ state }) {
     submitLeave, revokeLeave,
     addCalendarEvent, deleteCalendarEvent,
     assignShift, deleteShift,
+    submitBreakage,
     changePassword,
     logout,
   } = state
@@ -524,6 +649,7 @@ export default function StaffPortal({ state }) {
     { id: 'schedule', label: 'My schedule' },
     { id: 'leave',    label: 'Apply leave' },
     { id: 'history',  label: 'My leaves' },
+    { id: 'breakage', label: 'Breakages' },
     { id: 'calendar', label: 'Calendar' },
     { id: 'password', label: 'Change password' },
   ]
@@ -568,6 +694,12 @@ export default function StaffPortal({ state }) {
         <LeaveHistoryTab
           userId={currentUserId} db={db} helpers={helpers}
           onRevokeLeave={revokeLeave}
+        />
+      )}
+      {activeTab === 'breakage' && (
+        <BreakageTab
+          userId={currentUserId} db={db} helpers={helpers}
+          onSubmitBreakage={submitBreakage}
         />
       )}
       {activeTab === 'calendar' && (
