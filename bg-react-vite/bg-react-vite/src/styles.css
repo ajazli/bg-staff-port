@@ -305,15 +305,55 @@ th { border-top: none; background: var(--bg-warm); font-size: 11px; text-transfo
 .break-end-btn { background: #f57c00; }
 .break-end-btn:hover { background: #e65100; }
 
+/* ─── Staff inline table ─────────────────────────────────────────────────────── */
+.staff-inline-table { min-width: 1100px; }
+.staff-inline-table td { vertical-align: middle; padding: 7px 8px; }
+.si-input  { width: 100%; min-width: 90px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--charcoal); font: inherit; }
+.si-select { width: 100%; min-width: 80px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--charcoal); font: inherit; }
+.si-time   { width: 82px; padding: 5px 7px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--charcoal); font: inherit; }
+.si-num    { width: 54px; padding: 5px 6px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--charcoal); font: inherit; text-align: right; }
+.si-chips  { display: flex; flex-wrap: wrap; gap: 3px; }
+.si-save-btn, .si-view-btn { padding: 5px 10px; font-size: 12px; }
+.uid-cell  { font-size: 12px; color: var(--muted); font-family: monospace; white-space: nowrap; }
+.row-dirty td { background: #fffdf0; }
+.row-dirty td:first-child { border-left: 3px solid var(--amber); }
+
+/* ─── Day / branch toggles ───────────────────────────────────────────────────── */
+.day-toggle {
+  padding: 3px 5px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg-warm); cursor: pointer; color: var(--muted); white-space: nowrap;
+}
+.day-toggle.active { background: var(--success-bg); color: var(--success-txt); border-color: var(--success-txt); }
+.day-toggle:hover  { border-color: var(--amber); color: var(--charcoal); }
+
+/* ─── Staff profile page ─────────────────────────────────────────────────────── */
+.profile-header    { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.profile-back-btn  { flex-shrink: 0; }
+.profile-name      { font-size: 20px; font-weight: 700; color: var(--toast-brown); }
+.profile-grid-top  { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.detail-row        { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px; }
+.detail-label      { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.detail-value      { text-align: right; word-break: break-word; }
+.memo-textarea     { width: 100%; min-height: 140px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; font: inherit; color: var(--charcoal); }
+
+/* ─── Late arrival alerts ────────────────────────────────────────────────────── */
+.late-alert-bar    { padding: 12px 20px 0; display: grid; gap: 8px; }
+.late-alert-item   { display: flex; justify-content: space-between; align-items: center; background: #fff2f2; border: 1px solid #f1c1c1; border-radius: 12px; padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--danger-txt); }
+.late-alert-dismiss { background: none; border: none; color: var(--danger-txt); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 6px; margin-left: 12px; }
+.late-alert-dismiss:hover { background: #ffd7d7; }
+
 /* ─── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }
   .topbar   { flex-wrap: wrap; gap: 10px; }
   table     { min-width: 0; }
+  .staff-inline-table { min-width: 1100px; }
   .cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .cal-cell { min-height: 60px; }
   .cal-chip { display: none; }
   .cal-chip-more { display: block; }
+  .profile-grid-top { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .leave-table-desktop { display: none; }
