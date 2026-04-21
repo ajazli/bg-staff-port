@@ -40,9 +40,23 @@ router.post('/clock-in', async (req, res) => {
   }
 })
 
+router.post('/role-of-day', async (req, res) => {
+  try {
+    const uid  = req.user.userId
+    const { role } = req.body
+    if (!role) return res.status(400).json({ error: 'Role required' })
+    await pool.query('UPDATE active_sessions SET role_of_day=$1 WHERE user_id=$2', [role, uid])
+    res.json({ ok: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 router.post('/clock-out', async (req, res) => {
   try {
     const uid = req.user.userId
+    const { eodNote = '' } = req.body
     const sessRes = await pool.query('SELECT * FROM active_sessions WHERE user_id = $1', [uid])
     const session  = sessRes.rows[0]
     if (!session) return res.status(400).json({ error: 'No active clock-in session' })
@@ -96,8 +110,8 @@ router.post('/clock-out', async (req, res) => {
 
     await pool.query('BEGIN')
 
-    if (ph && isWorkDay) {
-      // Check if PH credit already given for this date
+    if (ph) {
+      // Credit PH OIL whenever staff works on a public holiday
       const existing = await pool.query(
         'SELECT id FROM attendance WHERE user_id=$1 AND date=$2 AND ph_credit_added=true',
         [uid, dateStr]
@@ -110,16 +124,15 @@ router.post('/clock-out', async (req, res) => {
           [uid]
         )
       }
-    } else if (ph && !isWorkDay) {
-      phCreditSkipped = true
     }
 
     const { rows } = await pool.query(
       `INSERT INTO attendance
          (user_id, date, in_time, out_time, hours, status, branch_id, branch_name, loc_ok,
           late_minutes, is_late, early_leave_minutes, left_early, overtime_minutes, did_overtime,
-          expected_start, expected_end, ph_name, ph_credit_added, ph_credit_skipped, break_minutes)
-       VALUES ($1,$2,$3,$4,$5,'complete',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+          expected_start, expected_end, ph_name, ph_credit_added, ph_credit_skipped, break_minutes,
+          role_of_day, eod_note)
+       VALUES ($1,$2,$3,$4,$5,'complete',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [uid, dateStr, inTime, outTime, `${hrs}h ${mins}m`,
        session.branch_id, session.branch_name, session.loc_ok,
@@ -127,7 +140,8 @@ router.post('/clock-out', async (req, res) => {
        earlyLeaveMinutes, earlyLeaveMinutes > 0,
        overtimeMinutes, overtimeMinutes > 0,
        expectedStart, expectedEnd,
-       phName, phCreditAdded, phCreditSkipped, totalBreakMins]
+       phName, phCreditAdded, phCreditSkipped, totalBreakMins,
+       session.role_of_day || null, eodNote || null]
     )
 
     await pool.query('DELETE FROM active_sessions WHERE user_id = $1', [uid])

@@ -49,10 +49,11 @@ export const api = {
   deleteBranch: (id)  => req('DELETE', `/branches/${id}`),
 
   // Attendance
-  clockIn:    (branchId, locOk) => req('POST', '/attendance/clock-in',    { branchId, locOk }),
-  clockOut:   ()                => req('POST', '/attendance/clock-out'),
-  breakStart: ()                => req('POST', '/attendance/break-start'),
-  breakEnd:   ()                => req('POST', '/attendance/break-end'),
+  clockIn:      (branchId, locOk) => req('POST', '/attendance/clock-in',    { branchId, locOk }),
+  clockOut:     (eodNote = '')    => req('POST', '/attendance/clock-out',   { eodNote }),
+  breakStart:   ()                => req('POST', '/attendance/break-start'),
+  breakEnd:     ()                => req('POST', '/attendance/break-end'),
+  setRoleOfDay: (role)            => req('POST', '/attendance/role-of-day', { role }),
 
   // Leaves
   submitLeave: (data) => req('POST',   '/leaves',            data),

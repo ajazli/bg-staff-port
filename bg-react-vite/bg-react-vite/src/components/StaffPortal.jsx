@@ -19,11 +19,16 @@ function Stats({ weekHours, annualLeft, presentDays }) {
 }
 
 // ─── Clock tab ───────────────────────────────────────────────────────────────
-function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd }) {
-  const [liveTime, setLiveTime]     = useState(new Date())
-  const [branchId, setBranchId]     = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
-  const [gpsStatus, setGpsStatus]   = useState('')  // 'checking' | 'ok' | error string
-  const [phNotice, setPhNotice]     = useState('')
+const ROLES_OF_DAY = ['Incharge', 'Barista', 'Service', 'Grab Packer', 'Kitchen Staff', 'Dishwasher']
+
+function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd, onSetRoleOfDay }) {
+  const [liveTime, setLiveTime]         = useState(new Date())
+  const [branchId, setBranchId]         = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
+  const [gpsStatus, setGpsStatus]       = useState('')  // 'checking' | 'ok' | error string
+  const [phNotice, setPhNotice]         = useState('')
+  const [eodModal, setEodModal]         = useState(false)
+  const [eodNote, setEodNote]           = useState('')
+  const [eodSubmitting, setEodSubmitting] = useState(false)
 
   useEffect(() => {
     const t = setInterval(() => setLiveTime(new Date()), 1000)
@@ -72,9 +77,18 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
     )
   }
 
-  const handleClockOut = () => {
-    const result = onClockOut()
-    if (result.phCredited) setPhNotice(`You worked on ${result.phName}. One PH Off-in-Lieu day has been credited.`)
+  const openEodModal = () => { setEodNote(''); setEodModal(true) }
+
+  const handleEodSubmit = async () => {
+    if (!eodNote.trim()) return
+    setEodSubmitting(true)
+    try {
+      const result = await onClockOut(eodNote)
+      setEodModal(false)
+      if (result?.phCredited) setPhNotice(`You worked on ${result.phName}. One PH Off-in-Lieu day has been credited.`)
+    } finally {
+      setEodSubmitting(false)
+    }
   }
 
   const todayShift = helpers.getTodayShift(userId)
@@ -115,25 +129,63 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
 
         <button
           className={`primary-btn${clockSession.active ? ' danger' : ''}`}
-          onClick={clockSession.active ? handleClockOut : handleClockIn}
+          onClick={clockSession.active ? openEodModal : handleClockIn}
           disabled={gpsStatus === 'checking'}
         >
           {clockSession.active ? 'Clock Out' : 'Clock In'}
         </button>
 
         {clockSession.active && (
-          <div className="break-section">
-            {clockSession.onBreak ? (
-              <>
-                <div className="break-status">
-                  <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
-                </div>
-                <button className="primary-btn break-end-btn" onClick={onBreakEnd}>End Break</button>
-              </>
-            ) : (
-              <button className="ghost-btn break-start-btn" onClick={onBreakStart}>Start Break</button>
-            )}
-          </div>
+          <>
+            {/* Role of the day selector */}
+            <div className="role-selector">
+              <div className="role-label">Role today</div>
+              <div className="role-chips">
+                {ROLES_OF_DAY.map((r) => (
+                  <button key={r} type="button"
+                    className={`role-chip${clockSession.roleOfDay === r ? ' active' : ''}`}
+                    onClick={() => onSetRoleOfDay(r)}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Break controls */}
+            <div className="break-section">
+              {clockSession.onBreak ? (
+                <>
+                  <div className="break-status">
+                    <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
+                  </div>
+                  <button className="primary-btn break-end-btn" onClick={onBreakEnd}>End Break</button>
+                </>
+              ) : (
+                <button className="ghost-btn break-start-btn" onClick={onBreakStart}>Start Break</button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* EOD note modal */}
+        {eodModal && (
+          <Modal title="End of day" onClose={() => setEodModal(false)}>
+            <p className="eod-prompt">Before clocking out, what happened during the day?</p>
+            <label className="field">
+              <span>Daily notes</span>
+              <textarea
+                value={eodNote}
+                onChange={(e) => setEodNote(e.target.value)}
+                placeholder="Summarise your shift, any issues, handover notes…"
+                autoFocus
+              />
+            </label>
+            {!eodNote.trim() && <div className="hint" style={{ marginBottom: 12 }}>Please add your end-of-day notes before clocking out.</div>}
+            <button className="primary-btn danger" onClick={handleEodSubmit}
+              disabled={!eodNote.trim() || eodSubmitting}>
+              {eodSubmitting ? 'Clocking out…' : 'Submit & Clock Out'}
+            </button>
+          </Modal>
         )}
 
         {!clockSession.active && (
@@ -647,7 +699,7 @@ function ChangePasswordTab({ onChangePassword }) {
 export default function StaffPortal({ state }) {
   const {
     db, currentUserId, currentUser, helpers,
-    clockSession, clockIn, clockOut, breakStart, breakEnd,
+    clockSession, clockIn, clockOut, breakStart, breakEnd, setRoleOfDay,
     submitLeave, revokeLeave,
     addCalendarEvent, deleteCalendarEvent,
     assignShift, deleteShift,
@@ -690,6 +742,7 @@ export default function StaffPortal({ state }) {
           clockSession={clockSession}
           onClockIn={clockIn} onClockOut={clockOut}
           onBreakStart={breakStart} onBreakEnd={breakEnd}
+          onSetRoleOfDay={setRoleOfDay}
         />
       )}
       {activeTab === 'schedule' && (
