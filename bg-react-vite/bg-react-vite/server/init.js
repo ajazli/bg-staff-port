@@ -166,6 +166,8 @@ async function migrateTables(client) {
     `ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS total_break_minutes INTEGER DEFAULT 0`,
     `ALTER TABLE active_sessions ADD COLUMN IF NOT EXISTS role_of_day VARCHAR(50)`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS break_minutes INTEGER DEFAULT 0`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS role_of_day VARCHAR(50)`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS eod_note TEXT`,
   ]

@@ -26,6 +26,9 @@ function transformUser(row) {
     expectedEnd:   row.expected_end   || '',
     workDays:      row.work_days      || [1,2,3,4,5],
     memo:          row.memo           || '',
+    avatarUrl:     row.avatar_url     || null,
+    birthday:      row.birthday instanceof Date ? row.birthday.toISOString().slice(0, 10)
+                   : row.birthday ? String(row.birthday).slice(0, 10) : null,
   }
 }
 

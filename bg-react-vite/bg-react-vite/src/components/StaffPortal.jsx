@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { haversineMeters, localDateToStr } from '../utils'
 import AppShell from './AppShell'
 import Badge from './Badge'
@@ -21,7 +21,7 @@ function Stats({ weekHours, annualLeft, presentDays }) {
 // ─── Clock tab ───────────────────────────────────────────────────────────────
 const ROLES_OF_DAY = ['Incharge', 'Barista', 'Service', 'Grab Packer', 'Kitchen Staff', 'Dishwasher']
 
-function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd, onSetRoleOfDay }) {
+function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd, onSetRoleOfDay, currentBranchId }) {
   const [liveTime, setLiveTime]         = useState(new Date())
   const [branchId, setBranchId]         = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
   const [gpsStatus, setGpsStatus]       = useState('')  // 'checking' | 'ok' | error string
@@ -222,6 +222,34 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
           </tbody>
         </table>
       </div>
+
+      {clockSession.active && (() => {
+        const colleagues = Object.entries(db.activeSessions || {})
+          .filter(([uid, sess]) => uid !== userId && sess.branchId === clockSession.branchId)
+          .map(([uid, sess]) => ({ uid, name: db.users[uid]?.name || uid, startedAt: sess.startedAt }))
+        return (
+          <>
+            <div className="section-title" style={{ marginTop: 20 }}>
+              Colleagues on shift — {clockSession.branchName}
+            </div>
+            <div className="table-card">
+              <table>
+                <thead><tr><th>Name</th><th>Clocked in at</th></tr></thead>
+                <tbody>
+                  {colleagues.length === 0
+                    ? <tr><td colSpan="2" className="empty-cell">No colleagues clocked in at this branch</td></tr>
+                    : colleagues.map((c) => (
+                      <tr key={c.uid}>
+                        <td>{c.name}</td>
+                        <td>{new Date(c.startedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )
+      })()}
     </section>
   )
 }
@@ -653,30 +681,93 @@ function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
   )
 }
 
-// ─── Change Password ──────────────────────────────────────────────────────────
-function ChangePasswordTab({ onChangePassword }) {
-  const [form, setForm]       = useState({ current: '', next: '', confirm: '' })
-  const [error, setError]     = useState('')
-  const [success, setSuccess] = useState('')
+// ─── Settings (profile + change password) ────────────────────────────────────
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024
 
-  const handleSubmit = async () => {
-    setError('')
-    setSuccess('')
-    if (!form.current) return setError('Please enter your current password.')
-    if (form.next.length < 6) return setError('New password must be at least 6 characters.')
-    if (form.next !== form.confirm) return setError('New passwords do not match.')
+function SettingsTab({ user, onChangePassword, onSaveProfile }) {
+  const [form, setForm]       = useState({ current: '', next: '', confirm: '' })
+  const [pwError, setPwError] = useState('')
+  const [pwSuccess, setPwSuccess] = useState('')
+
+  const [avatarUrl, setAvatarUrl]     = useState(user.avatarUrl || '')
+  const [birthday, setBirthday]       = useState(user.birthday || '')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileSuccess, setProfileSuccess] = useState('')
+  const [profileError, setProfileError]     = useState('')
+  const avatarRef = useRef()
+
+  const handlePwSubmit = async () => {
+    setPwError('')
+    setPwSuccess('')
+    if (!form.current) return setPwError('Please enter your current password.')
+    if (form.next.length < 6) return setPwError('New password must be at least 6 characters.')
+    if (form.next !== form.confirm) return setPwError('New passwords do not match.')
     try {
       await onChangePassword(form.current, form.next)
       setForm({ current: '', next: '', confirm: '' })
-      setSuccess('Password changed successfully.')
+      setPwSuccess('Password changed successfully.')
     } catch (err) {
-      setError(err.message || 'Failed to change password.')
+      setPwError(err.message || 'Failed to change password.')
+    }
+  }
+
+  const handleAvatarFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > MAX_AVATAR_BYTES) { setProfileError('Image must be under 5 MB.'); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setAvatarUrl(ev.target.result)
+    reader.readAsDataURL(file)
+    setProfileError('')
+  }
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true)
+    setProfileError('')
+    try {
+      await onSaveProfile({ avatarUrl: avatarUrl || null, birthday: birthday || null })
+      setProfileSuccess('Profile saved!')
+      setTimeout(() => setProfileSuccess(''), 3000)
+    } catch (err) {
+      setProfileError(err.message || 'Failed to save profile.')
+    } finally {
+      setProfileSaving(false)
     }
   }
 
   return (
-    <section>
-      <div className="panel" style={{ maxWidth: 400 }}>
+    <section className="settings-section">
+      <div className="panel" style={{ maxWidth: 420 }}>
+        <div className="section-title">Profile</div>
+        <div className="avatar-upload-row">
+          {avatarUrl
+            ? <img src={avatarUrl} alt="avatar" className="avatar-lg" />
+            : <div className="avatar-lg-initials">{user.initials}</div>}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="ghost-btn" onClick={() => avatarRef.current?.click()}>
+              {avatarUrl ? 'Change photo' : 'Upload photo'}
+            </button>
+            {avatarUrl && (
+              <button className="ghost-btn danger-text"
+                onClick={() => { setAvatarUrl(''); if (avatarRef.current) avatarRef.current.value = '' }}>
+                Remove
+              </button>
+            )}
+            <input ref={avatarRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile} />
+          </div>
+        </div>
+        <label className="field">
+          <span>Birthday</span>
+          <input type="date" value={birthday} onChange={(e) => setBirthday(e.target.value)} />
+        </label>
+        {profileError   && <div className="error-box">{profileError}</div>}
+        {profileSuccess && <div className="success-box">{profileSuccess}</div>}
+        <button className="primary-btn" onClick={handleSaveProfile} disabled={profileSaving}>
+          {profileSaving ? 'Saving…' : 'Save profile'}
+        </button>
+      </div>
+
+      <div className="panel" style={{ maxWidth: 420 }}>
         <div className="section-title">Change password</div>
         <label className="field"><span>Current password</span>
           <input type="password" value={form.current} onChange={(e) => setForm({ ...form, current: e.target.value })} />
@@ -687,9 +778,9 @@ function ChangePasswordTab({ onChangePassword }) {
         <label className="field"><span>Confirm new password</span>
           <input type="password" value={form.confirm} onChange={(e) => setForm({ ...form, confirm: e.target.value })} />
         </label>
-        {error   && <div className="error-box">{error}</div>}
-        {success && <div className="success-box">{success}</div>}
-        <button className="primary-btn" onClick={handleSubmit}>Change password</button>
+        {pwError   && <div className="error-box">{pwError}</div>}
+        {pwSuccess && <div className="success-box">{pwSuccess}</div>}
+        <button className="primary-btn" onClick={handlePwSubmit}>Change password</button>
       </div>
     </section>
   )
@@ -705,6 +796,7 @@ export default function StaffPortal({ state }) {
     assignShift, deleteShift,
     submitBreakage,
     changePassword,
+    saveStaff,
     logout,
     leaveTypes,
   } = state
@@ -718,10 +810,21 @@ export default function StaffPortal({ state }) {
     { id: 'history',  label: 'My leaves' },
     { id: 'breakage', label: 'Breakages' },
     { id: 'calendar', label: 'Calendar' },
-    { id: 'password', label: 'Change password' },
+    { id: 'settings', label: 'Settings' },
   ]
 
   const [activeTab, setActiveTab] = useState('clock')
+
+  const todayBirthdays = useMemo(() => {
+    if (!db) return []
+    const today = new Date()
+    const mmdd  = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    return Object.entries(db.users)
+      .filter(([, u]) => u.birthday && String(u.birthday).slice(5, 10) === mmdd)
+      .map(([uid, u]) => ({ uid, name: u.name, isMe: uid === currentUserId }))
+  }, [db, currentUserId])
+
+  const saveProfile = useCallback((payload) => saveStaff(currentUserId, payload), [saveStaff, currentUserId])
 
   const pendingApprovals = isTeamLead
     ? helpers.getAllSubordinates(currentUserId)
@@ -735,6 +838,16 @@ export default function StaffPortal({ state }) {
 
   return (
     <AppShell user={currentUser} onLogout={logout} tabs={tabsWithBadges} activeTab={activeTab} onTabChange={setActiveTab}>
+      {todayBirthdays.length > 0 && (
+        <div className="birthday-bar">
+          {todayBirthdays.map(({ uid, name, isMe }) => (
+            <div key={uid} className="birthday-item">
+              🎂 {isMe ? "It's your birthday! Happy birthday!" : `Today is ${name}'s birthday! 🎉`}
+            </div>
+          ))}
+        </div>
+      )}
+
       {activeTab === 'clock' && (
         <ClockTab
           userId={currentUserId} user={currentUser}
@@ -778,8 +891,12 @@ export default function StaffPortal({ state }) {
           onAddEvent={addCalendarEvent} onDeleteEvent={deleteCalendarEvent}
         />
       )}
-      {activeTab === 'password' && (
-        <ChangePasswordTab onChangePassword={changePassword} />
+      {activeTab === 'settings' && (
+        <SettingsTab
+          user={currentUser}
+          onChangePassword={changePassword}
+          onSaveProfile={saveProfile}
+        />
       )}
     </AppShell>
   )

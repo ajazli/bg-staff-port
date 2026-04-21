@@ -65,6 +65,14 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
       })
     })
 
+    // Birthdays — pin to current calendar year
+    Object.entries(db.users).forEach(([uid, u]) => {
+      if (!u.birthday) return
+      const parts = String(u.birthday).slice(0, 10).split('-')
+      const bdayStr = `${year}-${parts[1]}-${parts[2]}`
+      add(bdayStr, { type: 'birthday', label: `🎂 ${u.name}'s birthday`, color: '#FF4081', uid, key: `bd-${uid}-${year}` })
+    })
+
     // Approved leaves (expand date range)
     visibleUids.forEach((uid) => {
       ;(db.leaves[uid] || []).forEach((leave, li) => {
@@ -87,7 +95,7 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
     })
 
     return map
-  }, [db, visibleUids, currentUserId, helpers])
+  }, [db, visibleUids, currentUserId, helpers, year])
 
   // Calendar grid days (Monday-first)
   const cells = useMemo(() => {
@@ -118,6 +126,7 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
     { label: 'Public Holiday', color: '#FF9800' },
     { label: 'Calendar Event', color: '#AB47BC' },
     { label: 'Shift',          color: '#7986CB' },
+    { label: 'Birthday',       color: '#FF4081' },
     ...leaveTypes.map((t) => ({ label: t.label || t.name, color: t.color })),
   ]
 
