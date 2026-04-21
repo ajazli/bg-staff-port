@@ -383,36 +383,81 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave }) {
 // ─── Leave History ────────────────────────────────────────────────────────────
 function LeaveHistoryTab({ userId, db, helpers, onRevokeLeave }) {
   const leaves = db.leaves[userId] || []
+
+  if (leaves.length === 0) {
+    return (
+      <section>
+        <div className="section-title">My leave history</div>
+        <div className="table-card"><div className="empty-cell">No leave history yet</div></div>
+      </section>
+    )
+  }
+
   return (
     <section>
       <div className="section-title">My leave history</div>
-      <div className="table-card">
+
+      {/* Desktop table */}
+      <div className="table-card leave-table-desktop">
         <table>
-          <thead><tr><th>Type</th><th>Start</th><th>End</th><th>Days</th><th>Reason</th><th>Doc</th><th>Status</th><th>Action</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Type</th><th>Start</th><th>End</th><th>Days</th>
+              <th>Reason</th><th>Doc</th><th>Status</th><th>Action</th>
+            </tr>
+          </thead>
           <tbody>
-            {leaves.length === 0
-              ? <tr><td colSpan="8" className="empty-cell">No leave history yet</td></tr>
-              : leaves.map((leave) => {
-                  const lt = helpers.getLeaveType(leave.type)
-                  return (
-                    <tr key={`${leave.type}-${leave.start}-${index}`}>
-                      <td><span style={{ color: lt?.color }}>{leave.type}</span></td>
-                      <td>{helpers.fmtDate(leave.start)}</td>
-                      <td>{helpers.fmtDate(leave.end)}</td>
-                      <td>{leave.days}</td>
-                      <td className="td-reason">{leave.reason}</td>
-                      <td>
-                        {leave.attachmentUrl
-                          ? <a href={leave.attachmentUrl} download={leave.attachmentName} className="link-btn">{leave.attachmentName}</a>
-                          : '—'}
-                      </td>
-                      <td><Badge tone={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'info'}>{helpers.cap(leave.status)}</Badge></td>
-                      <td>{leave.status === 'pending' ? <button className="ghost-btn danger-text" onClick={() => onRevokeLeave(leave.id)}>Revoke</button> : '—'}</td>
-                    </tr>
-                  )
-                })}
+            {leaves.map((leave, index) => {
+              const lt = helpers.getLeaveType(leave.type)
+              return (
+                <tr key={leave.id || `${leave.type}-${leave.start}-${index}`}>
+                  <td><span style={{ color: lt?.color }}>{leave.type}</span></td>
+                  <td>{helpers.fmtDate(leave.start)}</td>
+                  <td>{helpers.fmtDate(leave.end)}</td>
+                  <td>{leave.days}</td>
+                  <td className="td-reason">{leave.reason || '—'}</td>
+                  <td>
+                    {leave.attachmentUrl
+                      ? <a href={leave.attachmentUrl} download={leave.attachmentName} className="link-btn">{leave.attachmentName}</a>
+                      : '—'}
+                  </td>
+                  <td><Badge tone={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'info'}>{helpers.cap(leave.status)}</Badge></td>
+                  <td>{leave.status === 'pending' ? <button className="ghost-btn danger-text" onClick={() => onRevokeLeave(leave.id)}>Revoke</button> : '—'}</td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="leave-cards-mobile">
+        {leaves.map((leave, index) => {
+          const lt = helpers.getLeaveType(leave.type)
+          return (
+            <div key={leave.id || `${leave.type}-${leave.start}-${index}`} className="leave-card">
+              <div className="leave-card-header">
+                <span className="leave-card-type" style={{ color: lt?.color }}>{leave.type}</span>
+                <Badge tone={leave.status === 'approved' ? 'success' : leave.status === 'rejected' ? 'danger' : 'info'}>{helpers.cap(leave.status)}</Badge>
+              </div>
+              <div className="leave-card-dates">
+                {helpers.fmtDate(leave.start)} — {helpers.fmtDate(leave.end)}
+                <span className="leave-card-days"> · {leave.days} day{leave.days !== 1 ? 's' : ''}</span>
+              </div>
+              {leave.reason && <div className="leave-card-reason">{leave.reason}</div>}
+              {(leave.attachmentUrl || leave.status === 'pending') && (
+                <div className="leave-card-footer">
+                  {leave.attachmentUrl && (
+                    <a href={leave.attachmentUrl} download={leave.attachmentName} className="link-btn">{leave.attachmentName}</a>
+                  )}
+                  {leave.status === 'pending' && (
+                    <button className="ghost-btn danger-text" onClick={() => onRevokeLeave(leave.id)}>Revoke</button>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </section>
   )
