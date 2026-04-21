@@ -20,13 +20,24 @@ router.post('/', requireAdmin, async (req, res) => {
     if (!name?.trim()) return res.status(400).json({ error: 'Name required' })
     const id = name.trim()
     const { rows: ord } = await pool.query('SELECT COALESCE(MAX(sort_order),0)+1 AS next FROM leave_types')
+    await pool.query('BEGIN')
     const { rows } = await pool.query(
       `INSERT INTO leave_types (id, name, color, default_days, requires_file, sort_order)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [id, id, color, Number(defaultDays), requiresFile, ord[0].next]
     )
+    // Seed a balance entry for every existing user so the new type appears immediately
+    const { rows: users } = await pool.query('SELECT id FROM users')
+    for (const user of users) {
+      await pool.query(
+        `INSERT INTO leave_balances (user_id, leave_type, total, used) VALUES ($1,$2,$3,0) ON CONFLICT DO NOTHING`,
+        [user.id, id, Number(defaultDays)]
+      )
+    }
+    await pool.query('COMMIT')
     res.status(201).json(rows[0])
   } catch (err) {
+    await pool.query('ROLLBACK')
     if (err.code === '23505') return res.status(409).json({ error: 'A leave type with that name already exists' })
     console.error(err)
     res.status(500).json({ error: 'Server error' })

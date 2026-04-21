@@ -357,9 +357,9 @@ export function usePortalState() {
   // ─── leave type CRUD ───────────────────────────────────────────────────────
   const addLeaveType = async (data) => {
     const row = await api.createLeaveType(data)
-    const lt = { id: row.id, name: row.name, label: row.name, color: row.color, defaultDays: row.default_days, requiresFile: row.requires_file, sortOrder: row.sort_order }
-    setDb((prev) => ({ ...prev, leaveTypes: [...(prev.leaveTypes || []), lt] }))
-    return lt
+    // Reload all data so newly seeded balance entries for every user are reflected
+    await loadData()
+    return { id: row.id, name: row.name, label: row.name, color: row.color, defaultDays: row.default_days, requiresFile: row.requires_file, sortOrder: row.sort_order }
   }
 
   const saveLeaveType = async (id, data) => {
