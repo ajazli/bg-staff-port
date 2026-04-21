@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { LEAVE_TYPES, SG_PUBLIC_HOLIDAYS } from '../data/mockData'
+import { SG_PUBLIC_HOLIDAYS } from '../data/mockData'
 import { localDateToStr, parseLocalDate } from '../utils'
 import Modal from './Modal'
 
@@ -113,11 +113,12 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
   }
 
   // Legend entries
+  const leaveTypes = db.leaveTypes || []
   const legendItems = [
     { label: 'Public Holiday', color: '#FF9800' },
     { label: 'Calendar Event', color: '#AB47BC' },
     { label: 'Shift',          color: '#7986CB' },
-    ...LEAVE_TYPES.slice(0, 4).map((t) => ({ label: t.label, color: t.color })),
+    ...leaveTypes.map((t) => ({ label: t.label || t.name, color: t.color })),
   ]
 
   return (

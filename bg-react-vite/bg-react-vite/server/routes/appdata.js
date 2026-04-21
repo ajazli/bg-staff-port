@@ -90,6 +90,18 @@ function transformTemplate(row) {
   }
 }
 
+function transformLeaveType(row) {
+  return {
+    id:           row.id,
+    name:         row.name,
+    label:        row.name,
+    color:        row.color,
+    defaultDays:  row.default_days,
+    requiresFile: row.requires_file,
+    sortOrder:    row.sort_order,
+  }
+}
+
 function transformBreakage(row) {
   return {
     id:             row.id,
@@ -111,7 +123,7 @@ router.get('/', authenticate, async (req, res) => {
     const [
       usersRes, branchesRes, templatesRes,
       attendRes, leavesRes, balancesRes,
-      schedulesRes, eventsRes, sessionsRes, breakagesRes,
+      schedulesRes, eventsRes, sessionsRes, breakagesRes, leaveTypesRes,
     ] = await Promise.all([
       pool.query('SELECT * FROM users ORDER BY created_at'),
       pool.query('SELECT * FROM branches ORDER BY name'),
@@ -125,6 +137,7 @@ router.get('/', authenticate, async (req, res) => {
       isAdmin
         ? pool.query('SELECT * FROM breakages ORDER BY date DESC, created_at DESC')
         : pool.query('SELECT * FROM breakages WHERE user_id=$1 ORDER BY date DESC, created_at DESC', [uid]),
+      pool.query('SELECT * FROM leave_types ORDER BY sort_order, name'),
     ])
 
     // Build users map
@@ -151,14 +164,17 @@ router.get('/', authenticate, async (req, res) => {
       balances[row.user_id][row.leave_type] = { total: row.total, used: row.used }
     })
 
-    // Active sessions: { userId: { startedAt, branchId, branchName, locOk } }
+    // Active sessions: { userId: { startedAt, branchId, branchName, locOk, onBreak, breakStartedAt, totalBreakMinutes } }
     const activeSessions = {}
     sessionsRes.rows.forEach((row) => {
       activeSessions[row.user_id] = {
-        startedAt:  row.started_at,
-        branchId:   row.branch_id,
-        branchName: row.branch_name,
-        locOk:      row.loc_ok,
+        startedAt:         row.started_at,
+        branchId:          row.branch_id,
+        branchName:        row.branch_name,
+        locOk:             row.loc_ok,
+        onBreak:           row.on_break || false,
+        breakStartedAt:    row.break_started_at || null,
+        totalBreakMinutes: row.total_break_minutes || 0,
       }
     })
 
@@ -179,6 +195,7 @@ router.get('/', authenticate, async (req, res) => {
       })),
       activeSessions,
       breakages: breakagesMap,
+      leaveTypes: leaveTypesRes.rows.map(transformLeaveType),
     })
   } catch (err) {
     console.error(err)

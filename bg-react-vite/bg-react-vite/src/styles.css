@@ -294,6 +294,17 @@ th { border-top: none; background: var(--bg-warm); font-size: 11px; text-transfo
 .leave-card-reason { font-size: 13px; color: var(--charcoal); margin-bottom: 8px; padding: 8px 10px; background: var(--bg-warm); border-radius: 8px; }
 .leave-card-footer { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
 
+/* ─── Leave type swatch ──────────────────────────────────────────────────────── */
+.lt-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.lt-color-hex { font-size: 12px; color: var(--muted); font-family: monospace; }
+
+/* ─── Break button ───────────────────────────────────────────────────────────── */
+.break-section { margin-top: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.break-status { margin-bottom: 2px; }
+.break-start-btn { color: var(--amber-dark); border-color: var(--amber); }
+.break-end-btn { background: #f57c00; }
+.break-end-btn:hover { background: #e65100; }
+
 /* ─── Responsive ─────────────────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }

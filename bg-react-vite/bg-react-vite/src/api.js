@@ -49,8 +49,10 @@ export const api = {
   deleteBranch: (id)  => req('DELETE', `/branches/${id}`),
 
   // Attendance
-  clockIn:  (branchId, locOk) => req('POST', '/attendance/clock-in',  { branchId, locOk }),
-  clockOut: ()                => req('POST', '/attendance/clock-out'),
+  clockIn:    (branchId, locOk) => req('POST', '/attendance/clock-in',    { branchId, locOk }),
+  clockOut:   ()                => req('POST', '/attendance/clock-out'),
+  breakStart: ()                => req('POST', '/attendance/break-start'),
+  breakEnd:   ()                => req('POST', '/attendance/break-end'),
 
   // Leaves
   submitLeave: (data) => req('POST',   '/leaves',            data),
@@ -69,6 +71,11 @@ export const api = {
   // Calendar events
   createEvent: (data) => req('POST',   '/calendar',       data),
   deleteEvent: (id)   => req('DELETE', `/calendar/${id}`),
+
+  // Leave types (admin CRUD)
+  createLeaveType: (data)     => req('POST',   '/leave-types',      data),
+  updateLeaveType: (id, data) => req('PUT',    `/leave-types/${id}`, data),
+  deleteLeaveType: (id)       => req('DELETE', `/leave-types/${id}`),
 
   // Breakages
   submitBreakage: (data) => req('POST', '/breakages', data),

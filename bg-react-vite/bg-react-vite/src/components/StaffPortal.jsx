@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LEAVE_TYPES } from '../data/mockData'
 import { haversineMeters, localDateToStr } from '../utils'
 import AppShell from './AppShell'
 import Badge from './Badge'
@@ -20,7 +19,7 @@ function Stats({ weekHours, annualLeft, presentDays }) {
 }
 
 // ─── Clock tab ───────────────────────────────────────────────────────────────
-function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut }) {
+function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd }) {
   const [liveTime, setLiveTime]     = useState(new Date())
   const [branchId, setBranchId]     = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
   const [gpsStatus, setGpsStatus]   = useState('')  // 'checking' | 'ok' | error string
@@ -121,6 +120,21 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
         >
           {clockSession.active ? 'Clock Out' : 'Clock In'}
         </button>
+
+        {clockSession.active && (
+          <div className="break-section">
+            {clockSession.onBreak ? (
+              <>
+                <div className="break-status">
+                  <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
+                </div>
+                <button className="primary-btn break-end-btn" onClick={onBreakEnd}>End Break</button>
+              </>
+            ) : (
+              <button className="ghost-btn break-start-btn" onClick={onBreakStart}>Start Break</button>
+            )}
+          </div>
+        )}
 
         {!clockSession.active && (
           <div className="gps-info">
@@ -288,14 +302,14 @@ function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, delet
 }
 
 // ─── Apply Leave ─────────────────────────────────────────────────────────────
-function LeaveApplyTab({ userId, db, helpers, onSubmitLeave }) {
+function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
   const INIT = { type: 'Annual Leave', start: '', end: '', reason: '', attachment: null }
   const [form, setForm]   = useState(INIT)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
   const fileRef = useRef()
 
-  const leaveType = LEAVE_TYPES.find((t) => t.id === form.type)
+  const leaveType = leaveTypes.find((t) => t.id === form.type)
   const needsFile = leaveType?.requiresFile || false
   const balances  = db.balances[userId] || {}
 
@@ -328,7 +342,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave }) {
         <label className="field">
           <span>Leave type</span>
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, attachment: null })}>
-            {LEAVE_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}{t.requiresFile ? ' *' : ''}</option>)}
+            {leaveTypes.map((t) => <option key={t.id} value={t.id}>{t.label || t.name}{t.requiresFile ? ' *' : ''}</option>)}
           </select>
         </label>
         <div className="two-col-form">
@@ -358,13 +372,13 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave }) {
       <div className="panel">
         <div className="section-title">Leave balances</div>
         <div className="balance-grid">
-          {LEAVE_TYPES.map((lt) => {
+          {leaveTypes.map((lt) => {
             const bal = balances[lt.id] || { total: 0, used: 0 }
             const rem = bal.total - bal.used
             const isUnlimited = lt.defaultDays === 0
             return (
               <div className="balance-card" key={lt.id} style={{ borderTop: `3px solid ${lt.color}` }}>
-                <div className="balance-title" style={{ color: lt.color }}>{lt.label}</div>
+                <div className="balance-title" style={{ color: lt.color }}>{lt.label || lt.name}</div>
                 {isUnlimited
                   ? <div className="balance-value">—</div>
                   : <div className="balance-value" style={{ color: lt.color }}>{rem}</div>}
@@ -633,13 +647,14 @@ function ChangePasswordTab({ onChangePassword }) {
 export default function StaffPortal({ state }) {
   const {
     db, currentUserId, currentUser, helpers,
-    clockSession, clockIn, clockOut,
+    clockSession, clockIn, clockOut, breakStart, breakEnd,
     submitLeave, revokeLeave,
     addCalendarEvent, deleteCalendarEvent,
     assignShift, deleteShift,
     submitBreakage,
     changePassword,
     logout,
+    leaveTypes,
   } = state
 
   const isTeamLead = currentUser?.role === 'team_lead'
@@ -674,6 +689,7 @@ export default function StaffPortal({ state }) {
           db={db} helpers={helpers}
           clockSession={clockSession}
           onClockIn={clockIn} onClockOut={clockOut}
+          onBreakStart={breakStart} onBreakEnd={breakEnd}
         />
       )}
       {activeTab === 'schedule' && (
@@ -687,7 +703,7 @@ export default function StaffPortal({ state }) {
       {activeTab === 'leave' && (
         <LeaveApplyTab
           userId={currentUserId} db={db} helpers={helpers}
-          onSubmitLeave={submitLeave}
+          onSubmitLeave={submitLeave} leaveTypes={leaveTypes}
         />
       )}
       {activeTab === 'history' && (
