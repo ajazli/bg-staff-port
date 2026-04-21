@@ -651,6 +651,7 @@ export default function AdminPortal({ state }) {
     addShiftTemplate, saveShiftTemplate, deleteShiftTemplate,
     assignShift, deleteShift,
     addCalendarEvent, deleteCalendarEvent,
+    changePassword,
     logout,
   } = state
 
@@ -660,7 +661,7 @@ export default function AdminPortal({ state }) {
   const liveCount    = Object.keys(db.activeSessions || {}).length
 
   return (
-    <AppShell user={currentUser} onLogout={logout} activeTab={activeTab} onTabChange={setActiveTab}
+    <AppShell user={currentUser} onLogout={logout} onChangePassword={changePassword} activeTab={activeTab} onTabChange={setActiveTab}
       tabs={TABS.map((t) => ({
         ...t,
         label: t.id === 'leaves' && pendingCount > 0 ? `${t.label} (${pendingCount})`
