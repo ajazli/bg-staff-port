@@ -51,6 +51,8 @@ function transformAttendance(row) {
     phName:             row.ph_name,
     phCreditAdded:      row.ph_credit_added,
     phCreditSkipped:    row.ph_credit_skipped,
+    roleOfDay:          row.role_of_day || '',
+    eodNote:            row.eod_note    || '',
   }
 }
 
@@ -175,6 +177,7 @@ router.get('/', authenticate, async (req, res) => {
         onBreak:           row.on_break || false,
         breakStartedAt:    row.break_started_at || null,
         totalBreakMinutes: row.total_break_minutes || 0,
+        roleOfDay:         row.role_of_day || '',
       }
     })
 
