@@ -283,8 +283,10 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
   const [resetError, setResetError]     = useState('')
   const [resetSuccess, setResetSuccess] = useState('')
 
-  const [editAvatar, setEditAvatar]   = useState(u?.avatarUrl || '')
-  const [editBirthday, setEditBirthday] = useState(u?.birthday || '')
+  const [editAvatar, setEditAvatar]                   = useState(u?.avatarUrl || '')
+  const [editBirthday, setEditBirthday]               = useState(u?.birthday || '')
+  const [editBreakAllowance, setEditBreakAllowance]   = useState(u?.breakAllowanceMinutes ?? 0)
+  const [editStartDate, setEditStartDate]             = useState(u?.startDate || '')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileSuccess, setProfileSuccess] = useState('')
   const avatarFileRef = useRef()
@@ -301,7 +303,12 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
   const saveProfileData = async () => {
     setProfileSaving(true)
     try {
-      await saveStaff(uid, { avatarUrl: editAvatar || null, birthday: editBirthday || null })
+      await saveStaff(uid, {
+        avatarUrl: editAvatar || null,
+        birthday: editBirthday || null,
+        breakAllowanceMinutes: Number(editBreakAllowance) || 0,
+        startDate: editStartDate || null,
+      })
       setProfileSuccess('Saved!')
       setTimeout(() => setProfileSuccess(''), 2500)
     } finally {
@@ -391,10 +398,19 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
               <span>Birthday</span>
               <input type="date" value={editBirthday} onChange={(e) => setEditBirthday(e.target.value)} />
             </label>
+            <label className="field">
+              <span>Employment start date</span>
+              <input type="date" value={editStartDate} onChange={(e) => setEditStartDate(e.target.value)} />
+            </label>
+            <label className="field">
+              <span>Break allowance (minutes, 0 = no limit)</span>
+              <input type="number" min={0} step={5} value={editBreakAllowance}
+                onChange={(e) => setEditBreakAllowance(Number(e.target.value))} />
+            </label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button className="primary-btn" style={{ padding: '8px 14px', fontSize: 13 }}
                 onClick={saveProfileData} disabled={profileSaving}>
-                {profileSaving ? 'Saving…' : 'Save photo & birthday'}
+                {profileSaving ? 'Saving…' : 'Save details'}
               </button>
               {profileSuccess && <span style={{ color: '#2e7d32', fontSize: 13, fontWeight: 600 }}>{profileSuccess}</span>}
             </div>
