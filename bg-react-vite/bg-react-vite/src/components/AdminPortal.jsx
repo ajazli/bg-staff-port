@@ -68,6 +68,8 @@ function LeavesPanel({ db, helpers, actLeave, currentUserId }) {
 function AttendancePanel({ db, helpers }) {
   const today = localDateToStr(new Date())
   const [tab, setTab] = useState('live')
+  const [histFilter, setHistFilter] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
 
   const activeSessions = Object.entries(db.activeSessions || {}).map(([uid, session]) => {
     const user       = db.users[uid]
@@ -90,6 +92,31 @@ function AttendancePanel({ db, helpers }) {
     ), [db.attendance])
 
   const todayAttendance = allAttendance.filter((r) => r.date === today)
+
+  const filteredAttendance = histFilter.trim()
+    ? allAttendance.filter(r => (db.users[r.uid]?.name||'').toLowerCase().includes(histFilter.toLowerCase()) || r.date.includes(histFilter))
+    : allAttendance
+
+  const reportAttendance = monthFilter
+    ? filteredAttendance.filter(r=>r.date.startsWith(monthFilter))
+    : filteredAttendance
+
+  function downloadCSV() {
+    const headers = ['Staff','Date','Expected Start','Expected End','In','Out','Hours','Branch','Location','Late (min)','Early Leave (min)','Overtime (min)','Break (min)','Role','EOD Note']
+    const rows = reportAttendance.map(r=>[
+      db.users[r.uid]?.name||r.uid, r.date, r.expectedStart||'', r.expectedEnd||'',
+      r.in||'', r.out||'', r.hours||'',
+      r.branchName||'', r.locOk?'On-site':'Flagged',
+      r.lateMinutes||0, r.earlyLeaveMinutes||0, r.overtimeMinutes||0,
+      r.breakMinutes||0, r.roleOfDay||'', (r.eodNote||'').replace(/,/g,' ').replace(/\n/g,' ')
+    ])
+    const csv = [headers,...rows].map(row=>row.map(v=>`"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv],{type:'text/csv'})
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href=url; a.download=`attendance-${monthFilter||'all'}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div>
@@ -148,12 +175,19 @@ function AttendancePanel({ db, helpers }) {
 
       {(tab === 'today' || tab === 'all') && (
         <div className="table-card">
+          {tab === 'all' && (
+            <div className="filter-row" style={{gap:8,flexWrap:'wrap',marginBottom:8}}>
+              <input className="search-input" placeholder="Filter by name or date…" value={histFilter} onChange={e=>setHistFilter(e.target.value)} />
+              <input type="month" className="si-time" value={monthFilter} onChange={e=>setMonthFilter(e.target.value)} style={{width:150}} />
+              <button className="ghost-btn" onClick={downloadCSV}>⬇ Download CSV</button>
+            </div>
+          )}
           <table>
-            <thead><tr><th>Staff</th><th>Date</th><th>Expected</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Location</th><th>Timing</th></tr></thead>
+            <thead><tr><th>Staff</th><th>Date</th><th>Expected</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Location</th><th>Timing</th><th>Break</th><th>Role</th><th>EOD Note</th></tr></thead>
             <tbody>
-              {(tab === 'today' ? todayAttendance : allAttendance).length === 0
-                ? <tr><td colSpan="9" className="empty-cell">No records</td></tr>
-                : (tab === 'today' ? todayAttendance : allAttendance).map((rec) => (
+              {(tab === 'today' ? todayAttendance : reportAttendance).length === 0
+                ? <tr><td colSpan="12" className="empty-cell">No records</td></tr>
+                : (tab === 'today' ? todayAttendance : reportAttendance).map((rec) => (
                   <tr key={`${rec.uid}-${rec.idx}`}>
                     <td>{db.users[rec.uid]?.name}</td>
                     <td>{helpers.fmtDate(rec.date)}</td>
@@ -164,6 +198,9 @@ function AttendancePanel({ db, helpers }) {
                     <td>{rec.branchName}</td>
                     <td><Badge tone={rec.locOk ? 'success' : 'danger'}>{rec.locOk ? 'On-site' : 'Flagged'}</Badge></td>
                     <td><div className="stack-inline">{helpers.getTimingBadges(rec).map((t) => <Badge key={t} tone={t.includes('Late') || t.includes('early') ? 'warn' : 'info'}>{t}</Badge>)}</div></td>
+                    <td>{rec.breakMinutes>0?`${rec.breakMinutes}m`:'—'}</td>
+                    <td>{rec.roleOfDay || '—'}</td>
+                    <td className="td-reason" style={{maxWidth:200}}>{rec.eodNote||'—'}</td>
                   </tr>
                 ))}
             </tbody>
@@ -967,11 +1004,12 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
   const [selectedUid, setSelectedUid] = useState('')
   const [modal, setModal]             = useState(false)
   const [weekModal, setWeekModal]     = useState(false)
-  const [form, setForm]               = useState({ date: localDateToStr(new Date()), branchId: '', templateId: '', startTime: '09:00', endTime: '18:00', note: '' })
+  const [form, setForm]               = useState({ date: localDateToStr(new Date()), branchId: '', templateId: '', startTime: '09:00', endTime: '18:00', note: '', breakAllowed: true })
   const [weekForm, setWeekForm]       = useState({
     pickedDate: localDateToStr(new Date()), branchId: '', templateId: '',
     startTime: '09:00', endTime: '18:00',
     days: [1, 2, 3, 4, 5],
+    breakAllowed: true,
   })
 
   const staffOptions = Object.entries(db.users).filter(([, u]) => u.role !== 'admin')
@@ -997,7 +1035,7 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
     const monday = getMondayOfWeek(weekForm.pickedDate)
     for (const day of weekForm.days) {
       const date = dayInWeek(monday, day === 0 ? 7 : day)
-      await assignShift(selectedUid, { date, branchId: weekForm.branchId, templateId: weekForm.templateId, startTime: weekForm.startTime, endTime: weekForm.endTime })
+      await assignShift(selectedUid, { date, branchId: weekForm.branchId, templateId: weekForm.templateId, startTime: weekForm.startTime, endTime: weekForm.endTime, breakAllowed: weekForm.breakAllowed })
     }
     setWeekModal(false)
   }
@@ -1072,6 +1110,7 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
             <label className="field"><span>End time</span><input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></label>
           </div>
           <label className="field"><span>Note (optional)</span><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
+          <label className="check-chip"><input type="checkbox" checked={form.breakAllowed} onChange={(e)=>setForm({...form,breakAllowed:e.target.checked})} />Allow break</label>
           <button className="primary-btn" onClick={handleAssign}>Assign shift</button>
         </Modal>
       )}
@@ -1106,6 +1145,7 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
             <label className="field"><span>Start time</span><input type="time" value={weekForm.startTime} onChange={(e) => setWeekForm({ ...weekForm, startTime: e.target.value })} /></label>
             <label className="field"><span>End time</span><input type="time" value={weekForm.endTime} onChange={(e) => setWeekForm({ ...weekForm, endTime: e.target.value })} /></label>
           </div>
+          <label className="check-chip"><input type="checkbox" checked={weekForm.breakAllowed} onChange={(e)=>setWeekForm({...weekForm,breakAllowed:e.target.checked})} />Allow break</label>
           <button className="primary-btn" onClick={handleAssignWeek} disabled={weekForm.days.length === 0 || !weekForm.branchId}>
             Assign {weekForm.days.length} day{weekForm.days.length !== 1 ? 's' : ''}
           </button>

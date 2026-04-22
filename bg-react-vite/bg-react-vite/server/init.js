@@ -172,6 +172,7 @@ async function migrateTables(client) {
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS eod_note TEXT`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS break_allowance_minutes INTEGER DEFAULT 0`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS start_date DATE`,
+    `ALTER TABLE schedules ADD COLUMN IF NOT EXISTS break_allowed BOOLEAN DEFAULT TRUE`,
   ]
   for (const s of stmts) await client.query(s)
 

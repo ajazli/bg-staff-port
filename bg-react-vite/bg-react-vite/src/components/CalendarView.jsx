@@ -148,7 +148,7 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
         {cells.map((day, idx) => {
           if (!day) return <div key={`pad-${idx}`} className="cal-cell cal-pad" />
           const ds     = localDateToStr(day)
-          const events = eventMap[ds] || []
+          const events = (eventMap[ds] || []).filter(ev => !isAdmin || ev.type !== 'shift')
           const isPH   = !!SG_PUBLIC_HOLIDAYS[ds]
           const isToday = ds === today
           return (
@@ -184,7 +184,7 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
       </div>
 
       {/* Day detail panel */}
-      {selected && selectedEvents.length > 0 && (
+      {selected && (selectedEvents.length > 0 || (isAdmin && (eventMap[selected]||[]).some(ev=>ev.type==='shift'))) && (
         <div className="cal-detail">
           <div className="cal-detail-title">{helpers.fmtDate(selected)}</div>
           {selectedEvents.map((ev) => (
@@ -196,6 +196,20 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
               )}
             </div>
           ))}
+          {isAdmin && (() => {
+            const shifts = (eventMap[selected]||[]).filter(ev=>ev.type==='shift')
+            if(shifts.length===0) return null
+            return (
+              <div style={{marginTop:12}}>
+                <div style={{fontWeight:600,marginBottom:6,fontSize:13}}>On shift this day</div>
+                {shifts.map(ev=>(
+                  <div key={ev.key} className="cal-detail-row" style={{borderLeft:`4px solid ${ev.color}`}}>
+                    <span className="cal-detail-label">{ev.label}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })()}
         </div>
       )}
 

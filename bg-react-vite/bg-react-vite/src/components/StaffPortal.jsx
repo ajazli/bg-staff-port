@@ -25,6 +25,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
   const [liveTime, setLiveTime]         = useState(new Date())
   const [branchId, setBranchId]         = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
   const [gpsStatus, setGpsStatus]       = useState('')  // 'checking' | 'ok' | error string
+  const [clockError, setClockError]     = useState('')
   const [phNotice, setPhNotice]         = useState('')
   const [eodModal, setEodModal]         = useState(false)
   const [eodNote, setEodNote]           = useState('')
@@ -53,10 +54,11 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
   }, [attendance])
 
   const handleClockIn = () => {
+    setClockError('')
     const branch = helpers.getBranch(branchId)
     if (!branch) return
     if (!branch.lat || !branch.lng) {
-      onClockIn(branchId, { locOk: false })
+      onClockIn(branchId, { locOk: false }).catch(err => setClockError(err.message || 'Clock-in failed'))
       return
     }
     setGpsStatus('checking')
@@ -65,7 +67,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
         const dist = haversineMeters(pos.coords.latitude, pos.coords.longitude, branch.lat, branch.lng)
         if (dist <= branch.radius) {
           setGpsStatus('ok')
-          onClockIn(branchId, { locOk: true })
+          onClockIn(branchId, { locOk: true }).catch(err => setClockError(err.message || 'Clock-in failed'))
         } else {
           setGpsStatus(`Too far — you are ${Math.round(dist)}m from ${branch.name} (max ${branch.radius}m).`)
         }
@@ -93,6 +95,18 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
 
   const todayShift = helpers.getTodayShift(userId)
   const todayBranch = todayShift ? helpers.getBranch(todayShift.branchId) : null
+  const breakAllowed = todayShift ? todayShift.breakAllowed !== false : true
+
+  // Feature 5: 60-minute break countdown
+  const breakElapsedMins = clockSession.onBreak && clockSession.breakStartedAt
+    ? Math.floor((liveTime - new Date(clockSession.breakStartedAt)) / 60000)
+    : 0
+  const breakSecsLeft = clockSession.onBreak && clockSession.breakStartedAt
+    ? Math.max(0, 60*60 - Math.floor((liveTime - new Date(clockSession.breakStartedAt)) / 1000))
+    : 0
+  const breakMinsLeft = Math.floor(breakSecsLeft/60)
+  const breakSecsRem  = breakSecsLeft%60
+  const breakOver = breakElapsedMins >= 60
 
   return (
     <section>
@@ -125,6 +139,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
 
         {gpsStatus === 'checking' && <div className="gps-checking">Checking location…</div>}
         {gpsStatus && gpsStatus !== 'checking' && gpsStatus !== 'ok' && <div className="error-box">{gpsStatus}</div>}
+        {clockError && <div className="error-box">{clockError}</div>}
         {phNotice && <div className="info-panel">{phNotice}</div>}
 
         <button
@@ -153,10 +168,17 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
 
             {/* Break controls */}
             <div className="break-section">
-              {clockSession.onBreak ? (
+              {!breakAllowed ? (
+                <div style={{color:'var(--muted)',fontSize:13}}>No break for today's shift</div>
+              ) : clockSession.onBreak ? (
                 <>
                   <div className="break-status">
                     <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
+                  </div>
+                  <div style={{fontSize:13,marginBottom:8,color:breakOver?'var(--danger)':'var(--muted)'}}>
+                    {breakOver
+                      ? `⚠ Over by ${breakElapsedMins-60}m — please end break`
+                      : `Time remaining: ${breakMinsLeft}m ${String(breakSecsRem).padStart(2,'0')}s`}
                   </div>
                   <button className="primary-btn break-end-btn" onClick={onBreakEnd}>End Break</button>
                 </>
@@ -422,7 +444,11 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
         <label className="field">
           <span>Leave type</span>
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, attachment: null })}>
-            {leaveTypes.map((t) => <option key={t.id} value={t.id}>{t.label || t.name}{t.requiresFile ? ' *' : ''}</option>)}
+            {leaveTypes.map((t) => {
+              const bal = (db.balances[userId]||{})[t.id]||{total:0,used:0}
+              const rem = t.defaultDays===0 ? '—' : `${bal.total-bal.used} left`
+              return <option key={t.id} value={t.id}>{t.label||t.name} ({rem}){t.requiresFile?' *':''}</option>
+            })}
           </select>
         </label>
         <div className="two-col-form">

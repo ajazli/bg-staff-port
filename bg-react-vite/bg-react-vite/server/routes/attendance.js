@@ -24,6 +24,18 @@ router.post('/clock-in', async (req, res) => {
     const branch    = branchRes.rows[0]
     if (!branch) return res.status(400).json({ error: 'Branch not found' })
 
+    // Feature 8: if staff uses the schedule system, enforce shift-today requirement
+    if (req.user.role !== 'admin') {
+      const { rows: hasSchedules } = await pool.query('SELECT id FROM schedules WHERE user_id=$1 LIMIT 1', [uid])
+      if (hasSchedules.length > 0) {
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+        const { rows: todayShift } = await pool.query('SELECT id FROM schedules WHERE user_id=$1 AND date=$2', [uid, todayStr])
+        if (todayShift.length === 0) {
+          return res.status(403).json({ error: 'You have no shift scheduled for today.' })
+        }
+      }
+    }
+
     await pool.query(
       `INSERT INTO active_sessions (user_id, started_at, branch_id, branch_name, loc_ok)
        VALUES ($1, NOW(), $2, $3, $4)
@@ -160,6 +172,14 @@ router.post('/break-start', async (req, res) => {
     const session = rows[0]
     if (!session) return res.status(400).json({ error: 'No active clock-in session' })
     if (session.on_break) return res.status(400).json({ error: 'Already on break' })
+
+    // Feature 4: check if break is allowed for today's shift
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+    const { rows: schedRows } = await pool.query('SELECT break_allowed FROM schedules WHERE user_id=$1 AND date=$2', [uid, today])
+    if (schedRows[0] && schedRows[0].break_allowed === false) {
+      return res.status(403).json({ error: 'Break not allowed for your shift today' })
+    }
+
     await pool.query(
       'UPDATE active_sessions SET on_break=true, break_started_at=NOW() WHERE user_id=$1', [uid]
     )

@@ -59,6 +59,7 @@ function transformAttendance(row) {
     phCreditSkipped:    row.ph_credit_skipped,
     roleOfDay:          row.role_of_day || '',
     eodNote:            row.eod_note    || '',
+    breakMinutes:       row.break_minutes || 0,
   }
 }
 
@@ -78,13 +79,14 @@ function transformLeave(row) {
 
 function transformSchedule(row) {
   return {
-    id:         row.id,
-    date:       row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
-    branchId:   row.branch_id,
-    templateId: row.template_id,
-    startTime:  row.start_time,
-    endTime:    row.end_time,
-    note:       row.note,
+    id:           row.id,
+    date:         row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
+    branchId:     row.branch_id,
+    templateId:   row.template_id,
+    startTime:    row.start_time,
+    endTime:      row.end_time,
+    note:         row.note,
+    breakAllowed: row.break_allowed !== false,
   }
 }
 

@@ -20,7 +20,7 @@ async function canManage(requesterId, requesterRole, targetUserId) {
 
 router.post('/', async (req, res) => {
   try {
-    const { userId, date, branchId, templateId, startTime, endTime, note = '' } = req.body
+    const { userId, date, branchId, templateId, startTime, endTime, note = '', breakAllowed = true } = req.body
     if (!userId || !date || !branchId) return res.status(400).json({ error: 'userId, date and branchId required' })
 
     if (!(await canManage(req.user.userId, req.user.role, userId))) {
@@ -28,12 +28,12 @@ router.post('/', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `INSERT INTO schedules (user_id, date, branch_id, template_id, start_time, end_time, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO schedules (user_id, date, branch_id, template_id, start_time, end_time, note, break_allowed)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (user_id, date) DO UPDATE
-         SET branch_id=$3, template_id=$4, start_time=$5, end_time=$6, note=$7
+         SET branch_id=$3, template_id=$4, start_time=$5, end_time=$6, note=$7, break_allowed=$8
        RETURNING *`,
-      [userId, date, branchId, templateId || null, startTime, endTime, note]
+      [userId, date, branchId, templateId || null, startTime, endTime, note, breakAllowed]
     )
     res.status(201).json(rows[0])
   } catch (err) {

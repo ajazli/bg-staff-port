@@ -318,9 +318,9 @@ export function usePortalState() {
   }
 
   // ─── schedules ─────────────────────────────────────────────────────────────
-  const assignShift = async (uid, { date, branchId, templateId, startTime, endTime, note = '' }) => {
-    const row = await api.assignShift({ userId: uid, date, branchId, templateId, startTime, endTime, note })
-    const newShift = { id: row.id, date: row.date?.slice?.(0, 10) || date, branchId: row.branch_id || branchId, templateId: row.template_id || templateId, startTime: row.start_time || startTime, endTime: row.end_time || endTime, note: row.note || note }
+  const assignShift = async (uid, { date, branchId, templateId, startTime, endTime, note = '', breakAllowed = true }) => {
+    const row = await api.assignShift({ userId: uid, date, branchId, templateId, startTime, endTime, note, breakAllowed })
+    const newShift = { id: row.id, date: row.date?.slice?.(0, 10) || date, branchId: row.branch_id || branchId, templateId: row.template_id || templateId, startTime: row.start_time || startTime, endTime: row.end_time || endTime, note: row.note || note, breakAllowed: row.break_allowed !== false }
     setDb((prev) => ({
       ...prev,
       schedules: {
