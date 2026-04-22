@@ -395,7 +395,7 @@ export function usePortalState() {
     clockSession,
     helpers,
     loadData,
-    leaveTypes:     db?.leaveTypes || LEAVE_TYPES,
+    leaveTypes:     db?.leaveTypes?.length ? db.leaveTypes : LEAVE_TYPES,
     workdayOptions: WORKDAY_OPTIONS,
     // auth
     login,

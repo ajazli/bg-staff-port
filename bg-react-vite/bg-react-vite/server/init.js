@@ -170,8 +170,25 @@ async function migrateTables(client) {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS birthday DATE`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS role_of_day VARCHAR(50)`,
     `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS eod_note TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS break_allowance_minutes INTEGER DEFAULT 0`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS start_date DATE`,
   ]
   for (const s of stmts) await client.query(s)
+
+  // Seed core leave types so they always exist even on fresh DBs with no prior seed
+  const CORE_LEAVE_TYPES = [
+    ['Annual Leave',   '#43a047', 14, false, 1],
+    ['Sick Leave',     '#e53935', 14, true,  2],
+    ['PH Off-in-Lieu', '#00acc1', 0,  false, 10],
+    ['NS Leave',       '#6d4c41', 0,  true,  7],
+  ]
+  for (const [id, color, days, req, ord] of CORE_LEAVE_TYPES) {
+    await client.query(
+      `INSERT INTO leave_types (id, name, color, default_days, requires_file, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
+      [id, id, color, days, req, ord]
+    )
+  }
 }
 
 async function seedData(client) {

@@ -13,10 +13,7 @@ function timeStrToMinutes(str) {
 }
 
 function localDateStr(dt) {
-  const y = dt.getFullYear()
-  const m = String(dt.getMonth() + 1).padStart(2, '0')
-  const d = String(dt.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return new Date(dt).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
 }
 
 router.post('/clock-in', async (req, res) => {
@@ -76,8 +73,9 @@ router.post('/clock-out', async (req, res) => {
     const hrs        = Math.floor(netMins / 60)
     const mins       = netMins % 60
     const dateStr = localDateStr(startedAt)
-    const inTime  = startedAt.toLocaleTimeString('en-SG',  { hour: '2-digit', minute: '2-digit', hour12: false })
-    const outTime = finishedAt.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })
+    const SG = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Singapore' }
+    const inTime  = startedAt.toLocaleTimeString('en-SG', SG)
+    const outTime = finishedAt.toLocaleTimeString('en-SG', SG)
 
     // Get user's schedule / expected times for this date
     const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [uid])

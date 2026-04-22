@@ -102,20 +102,45 @@ function AttendancePanel({ db, helpers }) {
       {tab === 'live' && (
         <div className="table-card">
           <table>
-            <thead><tr><th>Staff</th><th>Branch</th><th>Clocked in at</th><th>Expected start</th><th>Late by</th><th>Location</th></tr></thead>
+            <thead><tr><th>Staff</th><th>Branch</th><th>Clocked in at</th><th>Expected start</th><th>Late by</th><th>Break</th><th>Location</th></tr></thead>
             <tbody>
               {activeSessions.length === 0
-                ? <tr><td colSpan="6" className="empty-cell">No one is currently clocked in</td></tr>
-                : activeSessions.map(({ uid, user, session, expStart, lateMin, branch }) => (
-                  <tr key={uid}>
-                    <td>{user?.name}</td>
-                    <td>{branch?.name || session.branchName}</td>
-                    <td>{new Date(session.startedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
-                    <td>{expStart || '—'}</td>
-                    <td>{lateMin > 0 ? <Badge tone="warn">{lateMin}m late</Badge> : <Badge tone="success">On time</Badge>}</td>
-                    <td><Badge tone={session.locOk ? 'success' : 'danger'}>{session.locOk ? 'On-site' : 'Flagged'}</Badge></td>
-                  </tr>
-                ))}
+                ? <tr><td colSpan="7" className="empty-cell">No one is currently clocked in</td></tr>
+                : activeSessions.map(({ uid, user, session, expStart, lateMin, branch }) => {
+                  const allowance = user?.breakAllowanceMinutes || 0
+                  let breakCell
+                  if (session.onBreak) {
+                    const taken = session.totalBreakMinutes || 0
+                    const overshoot = allowance > 0 && taken > allowance
+                    breakCell = (
+                      <Badge tone="warn">
+                        {'On break ' + taken + 'm'}{allowance > 0 ? ' / ' + allowance + 'm' : ''}
+                        {overshoot ? ' ⚠' : ''}
+                      </Badge>
+                    )
+                  } else if ((session.totalBreakMinutes || 0) > 0) {
+                    const taken = session.totalBreakMinutes
+                    const overshoot = allowance > 0 && taken > allowance
+                    breakCell = (
+                      <span style={overshoot ? { color: 'var(--danger)', fontWeight: 600 } : { color: 'var(--muted)' }}>
+                        {taken + 'm break taken'}{allowance > 0 ? ' / ' + allowance + 'm' : ''}
+                      </span>
+                    )
+                  } else {
+                    breakCell = '—'
+                  }
+                  return (
+                    <tr key={uid}>
+                      <td>{user?.name}</td>
+                      <td>{branch?.name || session.branchName}</td>
+                      <td>{new Date(session.startedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Singapore' })}</td>
+                      <td>{expStart || '—'}</td>
+                      <td>{lateMin > 0 ? <Badge tone="warn">{lateMin}m late</Badge> : <Badge tone="success">On time</Badge>}</td>
+                      <td>{breakCell}</td>
+                      <td><Badge tone={session.locOk ? 'success' : 'danger'}>{session.locOk ? 'On-site' : 'Flagged'}</Badge></td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>
@@ -414,7 +439,7 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
 
       {/* Leave balances */}
       <div className="section-title" style={{ marginTop: 4 }}>Leave balances</div>
-      <div className="balance-grid" style={{ marginBottom: 24 }}>
+      <div className="balance-grid" style={{ marginBottom: 16 }}>
         {(leaveTypes || []).map((lt) => {
           const bal = db.balances[uid]?.[lt.id] || { total: 0, used: 0 }
           return (
@@ -426,6 +451,28 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
           )
         })}
       </div>
+
+      {/* Annual leave proration based on start date */}
+      {u.startDate && (() => {
+        const start   = new Date(u.startDate + 'T00:00:00')
+        const today   = new Date()
+        const months  = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
+        const annualTotal = db.balances[uid]?.['Annual Leave']?.total ?? 14
+        const recommended = months <= 2 ? 1 : Math.min(annualTotal, Math.round(months / 12 * annualTotal))
+        return (
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14 }}>
+              <strong>Start date:</strong> {u.startDate} &nbsp;|&nbsp;
+              <strong>{months} months</strong> worked &nbsp;|&nbsp;
+              Prorated annual leave: <strong>{recommended} day{recommended !== 1 ? 's' : ''}</strong>
+            </span>
+            <button className="ghost-btn" style={{ padding: '4px 10px', fontSize: 13 }}
+              onClick={() => setBalance(uid, 'Annual Leave', 'total', recommended)}>
+              Apply {recommended}d
+            </button>
+          </div>
+        )
+      })()}
 
       {/* Recent attendance */}
       <div className="section-title">Recent attendance</div>
@@ -528,16 +575,18 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
     const u   = db.users[uid]
     const bal = db.balances[uid] || {}
     return {
-      name:          u.name || '',
-      role:          u.role || 'staff',
-      branchIds:     [...(u.branchIds || [])],
-      expectedStart: u.expectedStart || '',
-      expectedEnd:   u.expectedEnd   || '',
-      workDays:      [...(u.workDays || [1, 2, 3, 4, 5])],
-      annual:  Number(bal['Annual Leave']?.total   ?? 14),
-      medical: Number(bal['Sick Leave']?.total     ?? 14),
-      phoil:   Number(bal['PH Off-in-Lieu']?.total ?? 0),
-      er:      Number(bal['NS Leave']?.total       ?? 0),
+      name:              u.name || '',
+      role:              u.role || 'staff',
+      branchIds:         [...(u.branchIds || [])],
+      expectedStart:     u.expectedStart || '',
+      expectedEnd:       u.expectedEnd   || '',
+      workDays:          [...(u.workDays || [1, 2, 3, 4, 5])],
+      annual:            Number(bal['Annual Leave']?.total   ?? 14),
+      medical:           Number(bal['Sick Leave']?.total     ?? 14),
+      phoil:             Number(bal['PH Off-in-Lieu']?.total ?? 0),
+      er:                Number(bal['NS Leave']?.total       ?? 0),
+      breakAllowanceMins: u.breakAllowanceMinutes || 0,
+      startDate:         u.startDate || '',
     }
   }
 
@@ -565,6 +614,8 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
         name: edit.name, role: edit.role, branchIds: edit.branchIds,
         expectedStart: edit.expectedStart, expectedEnd: edit.expectedEnd,
         workDays: edit.workDays,
+        breakAllowanceMinutes: edit.breakAllowanceMins,
+        startDate: edit.startDate || null,
       })
       await Promise.all([
         setBalance(uid, 'Annual Leave',   'total', edit.annual),
@@ -621,6 +672,8 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
               <th title="Sick Leave (MC)">Medical</th>
               <th title="PH Off-in-Lieu">PH OIL</th>
               <th title="NS Leave (Emergency Reservist)">ER</th>
+              <th title="Break allowance in minutes (0 = no limit)">Break (min)</th>
+              <th title="Employment start date">Start date</th>
               <th></th>
             </tr>
           </thead>
@@ -673,6 +726,8 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
                   <td><input type="number" className="si-num" min={0} value={edit.medical} onChange={(e) => setField(uid, 'medical', Number(e.target.value))} /></td>
                   <td><input type="number" className="si-num" min={0} value={edit.phoil}   onChange={(e) => setField(uid, 'phoil',   Number(e.target.value))} /></td>
                   <td><input type="number" className="si-num" min={0} value={edit.er}      onChange={(e) => setField(uid, 'er',      Number(e.target.value))} /></td>
+                  <td><input type="number" className="si-num" min={0} style={{ width: 60 }} value={edit.breakAllowanceMins} onChange={(e) => setField(uid, 'breakAllowanceMins', Number(e.target.value))} /></td>
+                  <td><input type="date" className="si-time" style={{ width: 120 }} value={edit.startDate} onChange={(e) => setField(uid, 'startDate', e.target.value)} /></td>
                   <td>
                     <div className="stack-inline">
                       <button className="ghost-btn si-view-btn" onClick={() => setProfileUid(uid)}>View</button>
@@ -730,6 +785,27 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
 }
 
 // ─── Branch Management ────────────────────────────────────────────────────────
+function BranchForm({ f, setF }) {
+  return (
+    <>
+      <label className="field"><span>Branch name</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
+      <label className="field"><span>Address</span><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></label>
+      <div className="two-col-form">
+        <label className="field"><span>Latitude</span><input type="number" step="0.00001" value={f.lat} onChange={(e) => setF({ ...f, lat: e.target.value })} placeholder="e.g. 1.33968" /></label>
+        <label className="field"><span>Longitude</span><input type="number" step="0.00001" value={f.lng} onChange={(e) => setF({ ...f, lng: e.target.value })} placeholder="e.g. 103.77606" /></label>
+      </div>
+      <label className="field"><span>Clock-in radius (metres)</span><input type="number" min={50} max={500} value={f.radius} onChange={(e) => setF({ ...f, radius: e.target.value })} /></label>
+      <label className="field"><span>Colour</span>
+        <div className="color-row">
+          {['#5b7fb8','#43a047','#e53935','#fb8c00','#AB47BC','#00acc1','#546e7a'].map((c) => (
+            <button key={c} className={`color-dot${f.color === c ? ' selected' : ''}`} style={{ background: c }} onClick={() => setF({ ...f, color: c })} />
+          ))}
+        </div>
+      </label>
+    </>
+  )
+}
+
 function BranchPanel({ db, helpers, addBranch, saveBranch, deleteBranch }) {
   const [modal, setModal]   = useState(null)   // null | 'new' | branchId
   const [form, setForm]     = useState({ name: '', address: '', lat: '', lng: '', radius: 100, color: '#7986CB' })
@@ -749,25 +825,6 @@ function BranchPanel({ db, helpers, addBranch, saveBranch, deleteBranch }) {
     saveBranch(editForm.id, editForm)
     setModal(null)
   }
-
-  const BranchForm = ({ f, setF }) => (
-    <>
-      <label className="field"><span>Branch name</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
-      <label className="field"><span>Address</span><input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></label>
-      <div className="two-col-form">
-        <label className="field"><span>Latitude</span><input type="number" step="0.00001" value={f.lat} onChange={(e) => setF({ ...f, lat: e.target.value })} placeholder="e.g. 1.33968" /></label>
-        <label className="field"><span>Longitude</span><input type="number" step="0.00001" value={f.lng} onChange={(e) => setF({ ...f, lng: e.target.value })} placeholder="e.g. 103.77606" /></label>
-      </div>
-      <label className="field"><span>Clock-in radius (metres)</span><input type="number" min={50} max={500} value={f.radius} onChange={(e) => setF({ ...f, radius: e.target.value })} /></label>
-      <label className="field"><span>Colour</span>
-        <div className="color-row">
-          {['#5b7fb8','#43a047','#e53935','#fb8c00','#AB47BC','#00acc1','#546e7a'].map((c) => (
-            <button key={c} className={`color-dot${f.color === c ? ' selected' : ''}`} style={{ background: c }} onClick={() => setF({ ...f, color: c })} />
-          ))}
-        </div>
-      </label>
-    </>
-  )
 
   return (
     <div>
@@ -814,15 +871,8 @@ function BranchPanel({ db, helpers, addBranch, saveBranch, deleteBranch }) {
 }
 
 // ─── Shift Templates ─────────────────────────────────────────────────────────
-function TemplatesPanel({ db, addShiftTemplate, saveShiftTemplate, deleteShiftTemplate }) {
-  const [modal, setModal] = useState(null)
-  const [form, setForm]   = useState({ name: '', startTime: '09:00', endTime: '18:00', color: '#7986CB' })
-  const [editForm, setEditForm] = useState(null)
-
-  const openNew  = () => { setForm({ name: '', startTime: '09:00', endTime: '18:00', color: '#7986CB' }); setModal('new') }
-  const openEdit = (t) => { setEditForm({ ...t }); setModal(t.id) }
-
-  const TemplateForm = ({ f, setF }) => (
+function TemplateForm({ f, setF }) {
+  return (
     <>
       <label className="field"><span>Template name</span><input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Morning" /></label>
       <div className="two-col-form">
@@ -838,6 +888,15 @@ function TemplatesPanel({ db, addShiftTemplate, saveShiftTemplate, deleteShiftTe
       </label>
     </>
   )
+}
+
+function TemplatesPanel({ db, addShiftTemplate, saveShiftTemplate, deleteShiftTemplate }) {
+  const [modal, setModal] = useState(null)
+  const [form, setForm]   = useState({ name: '', startTime: '09:00', endTime: '18:00', color: '#7986CB' })
+  const [editForm, setEditForm] = useState(null)
+
+  const openNew  = () => { setForm({ name: '', startTime: '09:00', endTime: '18:00', color: '#7986CB' }); setModal('new') }
+  const openEdit = (t) => { setEditForm({ ...t }); setModal(t.id) }
 
   return (
     <div>
@@ -874,11 +933,30 @@ function TemplatesPanel({ db, addShiftTemplate, saveShiftTemplate, deleteShiftTe
   )
 }
 
+function getMondayOfWeek(dateStr) {
+  const d   = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day))
+  return localDateToStr(d)
+}
+
+function dayInWeek(mondayStr, dayNum) {
+  const d = new Date(mondayStr + 'T00:00:00')
+  d.setDate(d.getDate() + dayNum - 1)
+  return localDateToStr(d)
+}
+
 // ─── Schedule ────────────────────────────────────────────────────────────────
 function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId }) {
   const [selectedUid, setSelectedUid] = useState('')
   const [modal, setModal]             = useState(false)
+  const [weekModal, setWeekModal]     = useState(false)
   const [form, setForm]               = useState({ date: localDateToStr(new Date()), branchId: '', templateId: '', startTime: '09:00', endTime: '18:00', note: '' })
+  const [weekForm, setWeekForm]       = useState({
+    pickedDate: localDateToStr(new Date()), branchId: '', templateId: '',
+    startTime: '09:00', endTime: '18:00',
+    days: [1, 2, 3, 4, 5],
+  })
 
   const staffOptions = Object.entries(db.users).filter(([, u]) => u.role !== 'admin')
 
@@ -887,11 +965,29 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
     setForm((f) => ({ ...f, templateId, startTime: tpl?.startTime || f.startTime, endTime: tpl?.endTime || f.endTime }))
   }
 
+  const handleWeekTemplateChange = (templateId) => {
+    const tpl = helpers.getShiftTemplate(templateId)
+    setWeekForm((f) => ({ ...f, templateId, startTime: tpl?.startTime || f.startTime, endTime: tpl?.endTime || f.endTime }))
+  }
+
   const handleAssign = () => {
     if (!selectedUid || !form.date || !form.branchId) return
     assignShift(selectedUid, form)
     setModal(false)
   }
+
+  const handleAssignWeek = async () => {
+    if (!selectedUid || !weekForm.pickedDate || !weekForm.branchId || weekForm.days.length === 0) return
+    const monday = getMondayOfWeek(weekForm.pickedDate)
+    for (const day of weekForm.days) {
+      const date = dayInWeek(monday, day === 0 ? 7 : day)
+      await assignShift(selectedUid, { date, branchId: weekForm.branchId, templateId: weekForm.templateId, startTime: weekForm.startTime, endTime: weekForm.endTime })
+    }
+    setWeekModal(false)
+  }
+
+  const toggleWeekDay = (day) =>
+    setWeekForm((f) => ({ ...f, days: f.days.includes(day) ? f.days.filter((d) => d !== day) : [...f.days, day] }))
 
   const userSchedule = selectedUid ? (db.schedules?.[selectedUid] || []).slice().sort((a, b) => a.date.localeCompare(b.date)) : []
 
@@ -899,7 +995,12 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
     <div>
       <div className="section-header">
         <div className="section-title">Shift schedule</div>
-        {selectedUid && <button className="primary-btn" onClick={() => setModal(true)}>+ Assign shift</button>}
+        {selectedUid && (
+          <div className="stack-inline">
+            <button className="primary-btn" onClick={() => setModal(true)}>+ Assign shift</button>
+            <button className="ghost-btn" onClick={() => setWeekModal(true)}>+ Assign week</button>
+          </div>
+        )}
       </div>
       <label className="field" style={{ maxWidth: 280 }}>
         <span>Select staff member</span>
@@ -956,6 +1057,42 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
           </div>
           <label className="field"><span>Note (optional)</span><input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
           <button className="primary-btn" onClick={handleAssign}>Assign shift</button>
+        </Modal>
+      )}
+
+      {weekModal && (
+        <Modal title={`Assign week — ${db.users[selectedUid]?.name}`} onClose={() => setWeekModal(false)}>
+          <label className="field"><span>Pick any day in the week</span>
+            <input type="date" value={weekForm.pickedDate} onChange={(e) => setWeekForm({ ...weekForm, pickedDate: e.target.value })} />
+          </label>
+          <div className="field"><span>Days to assign</span>
+            <div className="si-chips" style={{ marginTop: 6 }}>
+              {[{v:1,l:'Mon'},{v:2,l:'Tue'},{v:3,l:'Wed'},{v:4,l:'Thu'},{v:5,l:'Fri'},{v:6,l:'Sat'},{v:0,l:'Sun'}].map(({v,l}) => (
+                <button key={v} type="button"
+                  className={`day-toggle${weekForm.days.includes(v) ? ' active' : ''}`}
+                  onClick={() => toggleWeekDay(v)}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <label className="field"><span>Branch</span>
+            <select value={weekForm.branchId} onChange={(e) => setWeekForm({ ...weekForm, branchId: e.target.value })}>
+              <option value="">— Select branch —</option>
+              {db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Shift template</span>
+            <select value={weekForm.templateId} onChange={(e) => handleWeekTemplateChange(e.target.value)}>
+              <option value="">— Custom / none —</option>
+              {(db.shiftTemplates || []).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.startTime}–{t.endTime})</option>)}
+            </select>
+          </label>
+          <div className="two-col-form">
+            <label className="field"><span>Start time</span><input type="time" value={weekForm.startTime} onChange={(e) => setWeekForm({ ...weekForm, startTime: e.target.value })} /></label>
+            <label className="field"><span>End time</span><input type="time" value={weekForm.endTime} onChange={(e) => setWeekForm({ ...weekForm, endTime: e.target.value })} /></label>
+          </div>
+          <button className="primary-btn" onClick={handleAssignWeek} disabled={weekForm.days.length === 0 || !weekForm.branchId}>
+            Assign {weekForm.days.length} day{weekForm.days.length !== 1 ? 's' : ''}
+          </button>
         </Modal>
       )}
     </div>
