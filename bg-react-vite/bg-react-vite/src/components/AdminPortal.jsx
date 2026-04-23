@@ -611,6 +611,23 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
   )
 }
 
+// ─── Annual leave proration formula (matches server/routes/users.js) ─────────
+function calcProratedAnnualLeave(startDate) {
+  if (!startDate) return 0
+  const start = new Date(startDate + 'T00:00:00')
+  const today = new Date()
+  const months = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
+  const fullYears = Math.floor(months / 12)
+  const remaining = months % 12
+  let total = 0
+  for (let y = 0; y < fullYears; y++) total += Math.min(14, 7 + y)
+  if (remaining > 0 || months <= 2) {
+    const ent = months <= 2 ? 0 : Math.min(14, 7 + fullYears)
+    total += months <= 2 ? 1 : Math.round(remaining / 12 * ent)
+  }
+  return Math.max(0, total)
+}
+
 // ─── Staff CRUD ──────────────────────────────────────────────────────────────
 function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, setBalance, resetPassword }) {
   const [profileUid, setProfileUid] = useState(null)
@@ -672,7 +689,12 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
         startDate: edit.startDate || null,
       })
       await Promise.all(
-        leaveTypes.map((lt) => setBalance(uid, lt.id, 'total', edit[`bal_${lt.id}`] ?? 0))
+        leaveTypes.map((lt) => {
+          const value = lt.id === 'Annual Leave'
+            ? calcProratedAnnualLeave(edit.startDate)
+            : (edit[`bal_${lt.id}`] ?? 0)
+          return setBalance(uid, lt.id, 'total', value)
+        })
       )
       setRowEdits((prev) => { const n = { ...prev }; delete n[uid]; return n })
     } finally {
@@ -720,7 +742,9 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
               <th>Name</th><th>Username</th><th>Role</th><th>Branches</th>
               <th>Start</th><th>End</th><th>Work days</th>
               {leaveTypes.map((lt) => (
-                <th key={lt.id} title={lt.name}>{lt.name.split(' ')[0]}</th>
+                <th key={lt.id} title={lt.id === 'Annual Leave' ? 'Annual Leave — auto-calculated from start date' : lt.name}>
+                  {lt.name.split(' ')[0]}{lt.id === 'Annual Leave' ? ' 🔒' : ''}
+                </th>
               ))}
               <th title="Break allowance in minutes (0 = no limit)">Break (min)</th>
               <th title="Employment start date">Start date</th>
@@ -772,13 +796,25 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
                       ))}
                     </div>
                   </td>
-                  {leaveTypes.map((lt) => (
-                    <td key={lt.id}>
-                      <input type="number" className="si-num" min={0}
-                        value={edit[`bal_${lt.id}`] ?? 0}
-                        onChange={(e) => setField(uid, `bal_${lt.id}`, Number(e.target.value))} />
-                    </td>
-                  ))}
+                  {leaveTypes.map((lt) => {
+                    if (lt.id === 'Annual Leave') {
+                      const prorated = calcProratedAnnualLeave(edit.startDate)
+                      return (
+                        <td key={lt.id} title={edit.startDate ? `${prorated} days (prorated from ${edit.startDate})` : 'Set start date to calculate'}>
+                          <span className="si-num" style={{ display: 'inline-block', textAlign: 'center', color: edit.startDate ? 'var(--text)' : 'var(--muted)', fontStyle: edit.startDate ? 'normal' : 'italic' }}>
+                            {edit.startDate ? prorated : '—'}
+                          </span>
+                        </td>
+                      )
+                    }
+                    return (
+                      <td key={lt.id}>
+                        <input type="number" className="si-num" min={0}
+                          value={edit[`bal_${lt.id}`] ?? 0}
+                          onChange={(e) => setField(uid, `bal_${lt.id}`, Number(e.target.value))} />
+                      </td>
+                    )
+                  })}
                   <td><input type="number" className="si-num" min={0} style={{ width: 60 }} value={edit.breakAllowanceMins} onChange={(e) => setField(uid, 'breakAllowanceMins', Number(e.target.value))} /></td>
                   <td><input type="date" className="si-time" style={{ width: 120 }} value={edit.startDate} onChange={(e) => setField(uid, 'startDate', e.target.value)} /></td>
                   <td>
