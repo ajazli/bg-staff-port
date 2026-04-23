@@ -11,6 +11,26 @@ router.post('/', async (req, res) => {
     const { type, start, end, reason = '—', attachmentName = '', attachmentUrl = '' } = req.body
     if (!type || !start || !end) return res.status(400).json({ error: 'Type, start and end required' })
     const days = Math.round((new Date(end) - new Date(start)) / 86400000) + 1
+    if (days < 1) return res.status(400).json({ error: 'End date must be on or after start date' })
+
+    // Enforce balance — prevent negative leave
+    const { rows: balRows } = await pool.query(
+      'SELECT total, used FROM leave_balances WHERE user_id=$1 AND leave_type=$2',
+      [uid, type]
+    )
+    const bal = balRows[0]
+    if (bal) {
+      const remaining = bal.total - bal.used
+      if (remaining <= 0) {
+        return res.status(400).json({ error: `You have no remaining ${type} balance.` })
+      }
+      if (days > remaining) {
+        return res.status(400).json({
+          error: `Not enough balance. You requested ${days} day${days !== 1 ? 's' : ''} but only have ${remaining} remaining.`,
+        })
+      }
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO leaves (user_id, type, start_date, end_date, days, reason, attachment_name, attachment_url, status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING *`,

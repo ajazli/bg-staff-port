@@ -420,11 +420,15 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
   const [error, setError]     = useState('')
   const fileRef = useRef()
 
-  const leaveType   = leaveTypes.find((t) => t.id === form.type)
-  const needsFile   = leaveType?.requiresFile || false
-  const selectedBal = leaveType ? (balances[leaveType.id] || { total: 0, used: 0 }) : null
-  const selectedRem = selectedBal ? selectedBal.total - selectedBal.used : 0
-  const hasBalance  = selectedRem > 0
+  const leaveType     = leaveTypes.find((t) => t.id === form.type)
+  const needsFile     = leaveType?.requiresFile || false
+  const selectedBal   = leaveType ? (balances[leaveType.id] || { total: 0, used: 0 }) : null
+  const selectedRem   = selectedBal ? selectedBal.total - selectedBal.used : 0
+  const hasBalance    = selectedRem > 0
+  const requestedDays = form.start && form.end && form.end >= form.start
+    ? Math.round((new Date(form.end) - new Date(form.start)) / 86400000) + 1
+    : 0
+  const overBalance   = requestedDays > 0 && requestedDays > selectedRem
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]
@@ -441,6 +445,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
     if (!hasBalance) return setError('You have no remaining balance for this leave type.')
     if (!form.start || !form.end) return setError('Please select start and end dates.')
     if (form.start > form.end) return setError('End date must be after start date.')
+    if (overBalance) return setError(`You only have ${selectedRem} day${selectedRem !== 1 ? 's' : ''} remaining but selected ${requestedDays}.`)
     if (needsFile && !form.attachment) return setError('Please attach the required document for this leave type.')
     onSubmitLeave({ type: form.type, start: form.start, end: form.end, reason: form.reason, attachmentName: form.attachment?.name || '', attachmentUrl: form.attachment?.url || '' })
     setForm(INIT)
@@ -498,6 +503,22 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
           <label className="field"><span>Start date</span><input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></label>
           <label className="field"><span>End date</span><input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
         </div>
+
+        {requestedDays > 0 && (
+          <div style={{
+            fontSize: 13, padding: '6px 10px', borderRadius: 6, marginBottom: 8,
+            background: overBalance ? 'var(--danger-bg, #fdecea)' : 'var(--card)',
+            border: `1px solid ${overBalance ? 'var(--danger)' : 'var(--border)'}`,
+            color: overBalance ? 'var(--danger)' : 'var(--text)',
+            fontWeight: overBalance ? 600 : 400,
+          }}>
+            {requestedDays} day{requestedDays !== 1 ? 's' : ''} requested
+            {overBalance
+              ? ` — exceeds your ${selectedRem} remaining day${selectedRem !== 1 ? 's' : ''}`
+              : ` — ${selectedRem - requestedDays} day${selectedRem - requestedDays !== 1 ? 's' : ''} will remain`}
+          </div>
+        )}
+
         <label className="field"><span>Reason</span><textarea value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Optional — describe your reason" /></label>
 
         {needsFile && (
@@ -515,7 +536,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
         {error   && <div className="error-box">{error}</div>}
         {success && <div className="success-box">{success}</div>}
         <p className="hint">* indicates a supporting document is required by Singapore law.</p>
-        <button className="primary-btn" onClick={handleSubmit} disabled={!hasBalance}>Submit application</button>
+        <button className="primary-btn" onClick={handleSubmit} disabled={!hasBalance || overBalance}>Submit application</button>
       </div>
 
       <div className="panel">
