@@ -411,9 +411,12 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
   const [error, setError] = useState('')
   const fileRef = useRef()
 
-  const leaveType = leaveTypes.find((t) => t.id === form.type)
-  const needsFile = leaveType?.requiresFile || false
-  const balances  = db.balances[userId] || {}
+  const leaveType    = leaveTypes.find((t) => t.id === form.type)
+  const needsFile    = leaveType?.requiresFile || false
+  const balances     = db.balances[userId] || {}
+  const selectedBal  = leaveType ? (balances[leaveType.id] || { total: 0, used: 0 }) : null
+  const selectedRem  = selectedBal ? selectedBal.total - selectedBal.used : 0
+  const isUnlimited  = leaveType?.defaultDays === 0
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]
@@ -446,11 +449,40 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, attachment: null })}>
             {leaveTypes.map((t) => {
               const bal = (db.balances[userId]||{})[t.id]||{total:0,used:0}
-              const rem = t.defaultDays===0 ? '—' : `${bal.total-bal.used} left`
-              return <option key={t.id} value={t.id}>{t.label||t.name} ({rem}){t.requiresFile?' *':''}</option>
+              const rem = t.defaultDays===0 ? 'Unlimited' : `${bal.total-bal.used} day${bal.total-bal.used!==1?'s':''} left`
+              return <option key={t.id} value={t.id}>{t.label||t.name} — {rem}{t.requiresFile?' (doc required)':''}</option>
             })}
           </select>
         </label>
+
+        {leaveType && selectedBal && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            background: `${leaveType.color}15`,
+            border: `1px solid ${leaveType.color}55`,
+            borderRadius: 8, padding: '10px 14px', marginBottom: 4,
+          }}>
+            <span style={{ fontSize: 28, fontWeight: 700, color: isUnlimited || selectedRem > 0 ? leaveType.color : 'var(--danger)', lineHeight: 1 }}>
+              {isUnlimited ? '∞' : selectedRem}
+            </span>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>
+                {isUnlimited ? 'No limit' : `day${selectedRem !== 1 ? 's' : ''} remaining`}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                {isUnlimited
+                  ? `${selectedBal.used} day${selectedBal.used !== 1 ? 's' : ''} taken`
+                  : `${selectedBal.used} used of ${selectedBal.total} total`}
+              </div>
+            </div>
+            {!isUnlimited && selectedRem === 0 && (
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>
+                No days left
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="two-col-form">
           <label className="field"><span>Start date</span><input type="date" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} /></label>
           <label className="field"><span>End date</span><input type="date" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} /></label>
@@ -476,25 +508,31 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
       </div>
 
       <div className="panel">
-        <div className="section-title">Leave balances</div>
+        <div className="section-title">Your leave balances</div>
         <div className="balance-grid">
           {leaveTypes.map((lt) => {
             const bal = balances[lt.id] || { total: 0, used: 0 }
             const rem = bal.total - bal.used
-            const isUnlimited = lt.defaultDays === 0
+            const unlimited = lt.defaultDays === 0
+            const low = !unlimited && rem === 0
             return (
-              <div className="balance-card" key={lt.id} style={{ borderTop: `3px solid ${lt.color}` }}>
+              <div className="balance-card" key={lt.id}
+                style={{ borderTop: `3px solid ${lt.color}`, outline: form.type === lt.id ? `2px solid ${lt.color}` : 'none' }}>
                 <div className="balance-title" style={{ color: lt.color }}>{lt.label || lt.name}</div>
-                {isUnlimited
-                  ? <div className="balance-value">—</div>
-                  : <div className="balance-value" style={{ color: lt.color }}>{rem}</div>}
+                {unlimited
+                  ? <div className="balance-value">∞</div>
+                  : <div className="balance-value" style={{ color: low ? 'var(--danger)' : lt.color }}>{rem}</div>}
                 <div className="balance-sub">
-                  {isUnlimited ? `${bal.used} days taken` : `${bal.used} used / ${bal.total} total`}
+                  {unlimited
+                    ? `${bal.used} day${bal.used !== 1 ? 's' : ''} taken`
+                    : `${bal.used} used / ${bal.total} total`}
                 </div>
+                {low && <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600, marginTop: 2 }}>No days left</div>}
               </div>
             )
           })}
         </div>
+        <p className="hint" style={{ marginTop: 8 }}>Balances are set by your admin.</p>
       </div>
     </section>
   )
