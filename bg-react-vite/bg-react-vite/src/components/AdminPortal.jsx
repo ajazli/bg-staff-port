@@ -627,6 +627,10 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
   function initEdit(uid) {
     const u   = db.users[uid]
     const bal = db.balances[uid] || {}
+    const balFields = {}
+    leaveTypes.forEach((lt) => {
+      balFields[`bal_${lt.id}`] = Number(bal[lt.id]?.total ?? lt.defaultDays ?? 0)
+    })
     return {
       name:              u.name || '',
       role:              u.role || 'staff',
@@ -634,10 +638,7 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
       expectedStart:     u.expectedStart || '',
       expectedEnd:       u.expectedEnd   || '',
       workDays:          [...(u.workDays || [1, 2, 3, 4, 5])],
-      annual:            Number(bal['Annual Leave']?.total   ?? 14),
-      medical:           Number(bal['Sick Leave']?.total     ?? 14),
-      phoil:             Number(bal['PH Off-in-Lieu']?.total ?? 0),
-      er:                Number(bal['NS Leave']?.total       ?? 0),
+      ...balFields,
       breakAllowanceMins: u.breakAllowanceMinutes || 0,
       startDate:         u.startDate || '',
     }
@@ -670,12 +671,9 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
         breakAllowanceMinutes: edit.breakAllowanceMins,
         startDate: edit.startDate || null,
       })
-      await Promise.all([
-        setBalance(uid, 'Annual Leave',   'total', edit.annual),
-        setBalance(uid, 'Sick Leave',     'total', edit.medical),
-        setBalance(uid, 'PH Off-in-Lieu', 'total', edit.phoil),
-        setBalance(uid, 'NS Leave',       'total', edit.er),
-      ])
+      await Promise.all(
+        leaveTypes.map((lt) => setBalance(uid, lt.id, 'total', edit[`bal_${lt.id}`] ?? 0))
+      )
       setRowEdits((prev) => { const n = { ...prev }; delete n[uid]; return n })
     } finally {
       setSaving((prev) => { const n = { ...prev }; delete n[uid]; return n })
@@ -721,10 +719,9 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
             <tr>
               <th>Name</th><th>Username</th><th>Role</th><th>Branches</th>
               <th>Start</th><th>End</th><th>Work days</th>
-              <th title="Annual Leave">Annual</th>
-              <th title="Sick Leave (MC)">Medical</th>
-              <th title="PH Off-in-Lieu">PH OIL</th>
-              <th title="NS Leave (Emergency Reservist)">ER</th>
+              {leaveTypes.map((lt) => (
+                <th key={lt.id} title={lt.name}>{lt.name.split(' ')[0]}</th>
+              ))}
               <th title="Break allowance in minutes (0 = no limit)">Break (min)</th>
               <th title="Employment start date">Start date</th>
               <th></th>
@@ -775,10 +772,13 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
                       ))}
                     </div>
                   </td>
-                  <td><input type="number" className="si-num" min={0} value={edit.annual}  onChange={(e) => setField(uid, 'annual',  Number(e.target.value))} /></td>
-                  <td><input type="number" className="si-num" min={0} value={edit.medical} onChange={(e) => setField(uid, 'medical', Number(e.target.value))} /></td>
-                  <td><input type="number" className="si-num" min={0} value={edit.phoil}   onChange={(e) => setField(uid, 'phoil',   Number(e.target.value))} /></td>
-                  <td><input type="number" className="si-num" min={0} value={edit.er}      onChange={(e) => setField(uid, 'er',      Number(e.target.value))} /></td>
+                  {leaveTypes.map((lt) => (
+                    <td key={lt.id}>
+                      <input type="number" className="si-num" min={0}
+                        value={edit[`bal_${lt.id}`] ?? 0}
+                        onChange={(e) => setField(uid, `bal_${lt.id}`, Number(e.target.value))} />
+                    </td>
+                  ))}
                   <td><input type="number" className="si-num" min={0} style={{ width: 60 }} value={edit.breakAllowanceMins} onChange={(e) => setField(uid, 'breakAllowanceMins', Number(e.target.value))} /></td>
                   <td><input type="date" className="si-time" style={{ width: 120 }} value={edit.startDate} onChange={(e) => setField(uid, 'startDate', e.target.value)} /></td>
                   <td>
@@ -1067,13 +1067,14 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
       {selectedUid && (
         <div className="table-card">
           <table>
-            <thead><tr><th>Date</th><th>Shift</th><th>Branch</th><th>Time</th><th>Note</th><th>Action</th></tr></thead>
+            <thead><tr><th>Date</th><th>Shift</th><th>Branch</th><th>Time</th><th>Note</th><th>Break</th><th>Breakages</th><th>Action</th></tr></thead>
             <tbody>
               {userSchedule.length === 0
-                ? <tr><td colSpan="6" className="empty-cell">No shifts scheduled</td></tr>
+                ? <tr><td colSpan="8" className="empty-cell">No shifts scheduled</td></tr>
                 : userSchedule.map((s) => {
-                    const tpl    = helpers.getShiftTemplate(s.templateId)
-                    const branch = helpers.getBranch(s.branchId)
+                    const tpl         = helpers.getShiftTemplate(s.templateId)
+                    const branch      = helpers.getBranch(s.branchId)
+                    const dayBreakages = (db.breakages?.[selectedUid] || []).filter((b) => b.date === s.date)
                     return (
                       <tr key={s.id}>
                         <td>{helpers.fmtDate(s.date)}</td>
@@ -1081,6 +1082,14 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
                         <td>{branch?.name || '—'}</td>
                         <td>{s.startTime} – {s.endTime}</td>
                         <td>{s.note || '—'}</td>
+                        <td>{s.breakAllowed !== false ? '✓' : '—'}</td>
+                        <td>
+                          {dayBreakages.length > 0
+                            ? <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                                {dayBreakages.length} report{dayBreakages.length > 1 ? 's' : ''}
+                              </span>
+                            : '—'}
+                        </td>
                         <td><button className="ghost-btn danger-text" onClick={() => deleteShift(selectedUid, s.id)}>Remove</button></td>
                       </tr>
                     )
