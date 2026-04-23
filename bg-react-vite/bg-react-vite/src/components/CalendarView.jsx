@@ -39,21 +39,6 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
       add(ev.date, { type: 'event', label: ev.title, color: ev.color, id: ev.id, key: `ev-${ev.id}`, createdBy: ev.createdBy })
     })
 
-    // Schedules
-    visibleUids.forEach((uid) => {
-      ;(db.schedules?.[uid] || []).forEach((shift) => {
-        const tpl    = helpers.getShiftTemplate(shift.templateId)
-        const branch = helpers.getBranch(shift.branchId)
-        const color  = tpl?.color || branch?.color || '#7986CB'
-        const uname  = uid === currentUserId ? 'My shift' : db.users[uid]?.name || uid
-        add(shift.date, {
-          type:  'shift',
-          label: `${uname}: ${tpl?.name || shift.startTime}–${shift.endTime}`,
-          color, uid, shiftId: shift.id, key: `sh-${shift.id}`,
-        })
-      })
-    })
-
     // Birthdays
     Object.entries(db.users).forEach(([uid, u]) => {
       if (!u.birthday) return
@@ -95,12 +80,10 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
   const nextMonth = () => { if (month === 11) { setMonth(0);  setYear(y => y + 1) } else setMonth(m => m + 1) }
   const goToday   = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
 
-  // For grid chips: admin sees non-shift events; shifts shown separately in detail
-  const gridEvents = (ds) => (eventMap[ds] || []).filter(ev => ev.type !== 'shift')
+  const gridEvents = (ds) => eventMap[ds] || []
   const allDayEvents = selected ? (eventMap[selected] || []) : []
-  const detailNonShift = allDayEvents.filter(ev => ev.type !== 'shift')
-  const detailShifts   = allDayEvents.filter(ev => ev.type === 'shift')
-  const detailLeaves   = allDayEvents.filter(ev => ev.type === 'leave')
+  const detailEvents = allDayEvents.filter(ev => ev.type !== 'leave')
+  const detailLeaves = allDayEvents.filter(ev => ev.type === 'leave')
 
   const handleAddEvent = () => {
     if (!newEvent.title.trim()) return
@@ -112,7 +95,6 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
   const leaveTypes = db.leaveTypes || []
   const legendItems = [
     { label: 'Calendar Event', color: '#AB47BC' },
-    { label: 'Shift',          color: '#7986CB' },
     { label: 'Birthday',       color: '#FF4081' },
     ...leaveTypes.map((t) => ({ label: t.label || t.name, color: t.color })),
   ]
@@ -170,8 +152,8 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
         <div className="cal-detail">
           <div className="cal-detail-title">{helpers.fmtDate(selected)}</div>
 
-          {/* Non-shift, non-leave events (calendar events, birthdays) */}
-          {detailNonShift.filter(ev => ev.type !== 'leave').map((ev) => (
+          {/* Calendar events and birthdays */}
+          {detailEvents.map((ev) => (
             <div key={ev.key} className="cal-detail-row" style={{ borderLeft: `4px solid ${ev.color}` }}>
               <span className="cal-detail-label">{ev.label}</span>
               <span className="cal-detail-type" style={{ color: ev.color }}>{ev.type}</span>
@@ -183,21 +165,9 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
 
           {/* Who is on leave */}
           {detailLeaves.length > 0 && (
-            <div style={{ marginTop: detailNonShift.filter(ev => ev.type !== 'leave').length > 0 ? 12 : 0 }}>
+            <div style={{ marginTop: detailEvents.length > 0 ? 12 : 0 }}>
               <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>On leave this day</div>
               {detailLeaves.map((ev) => (
-                <div key={ev.key} className="cal-detail-row" style={{ borderLeft: `4px solid ${ev.color}` }}>
-                  <span className="cal-detail-label">{ev.label}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Who is on shift (admin only) */}
-          {isAdmin && detailShifts.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>On shift this day</div>
-              {detailShifts.map((ev) => (
                 <div key={ev.key} className="cal-detail-row" style={{ borderLeft: `4px solid ${ev.color}` }}>
                   <span className="cal-detail-label">{ev.label}</span>
                 </div>
