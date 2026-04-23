@@ -405,19 +405,26 @@ function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, delet
 
 // ─── Apply Leave ─────────────────────────────────────────────────────────────
 function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
-  const INIT = { type: 'Annual Leave', start: '', end: '', reason: '', attachment: null }
-  const [form, setForm]   = useState(INIT)
+  const balances = db.balances[userId] || {}
+
+  const getRemaining = (lt) => {
+    const bal = balances[lt.id] || { total: 0, used: 0 }
+    return bal.total - bal.used
+  }
+
+  // Default to the first type that has days remaining, or just the first type
+  const firstAvailable = leaveTypes.find((t) => getRemaining(t) > 0)?.id || leaveTypes[0]?.id || ''
+  const INIT = { type: firstAvailable, start: '', end: '', reason: '', attachment: null }
+  const [form, setForm]       = useState(INIT)
   const [success, setSuccess] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError]     = useState('')
   const fileRef = useRef()
 
-  const leaveType    = leaveTypes.find((t) => t.id === form.type)
-  const needsFile    = leaveType?.requiresFile || false
-  const balances     = db.balances[userId] || {}
-  const selectedBal  = leaveType ? (balances[leaveType.id] || { total: 0, used: 0 }) : null
-  const selectedRem  = selectedBal ? selectedBal.total - selectedBal.used : 0
-  // Unlimited only when admin has not set a positive total AND type has no built-in default
-  const isUnlimited  = (selectedBal?.total ?? 0) === 0 && (leaveType?.defaultDays ?? 0) === 0
+  const leaveType   = leaveTypes.find((t) => t.id === form.type)
+  const needsFile   = leaveType?.requiresFile || false
+  const selectedBal = leaveType ? (balances[leaveType.id] || { total: 0, used: 0 }) : null
+  const selectedRem = selectedBal ? selectedBal.total - selectedBal.used : 0
+  const hasBalance  = selectedRem > 0
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]
@@ -431,6 +438,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
 
   const handleSubmit = () => {
     setError('')
+    if (!hasBalance) return setError('You have no remaining balance for this leave type.')
     if (!form.start || !form.end) return setError('Please select start and end dates.')
     if (form.start > form.end) return setError('End date must be after start date.')
     if (needsFile && !form.attachment) return setError('Please attach the required document for this leave type.')
@@ -449,10 +457,13 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
           <span>Leave type</span>
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, attachment: null })}>
             {leaveTypes.map((t) => {
-              const bal  = (db.balances[userId]||{})[t.id]||{total:0,used:0}
-              const unli = bal.total === 0 && t.defaultDays === 0
-              const rem  = unli ? 'Unlimited' : `${bal.total-bal.used} day${bal.total-bal.used!==1?'s':''} left`
-              return <option key={t.id} value={t.id}>{t.label||t.name} — {rem}{t.requiresFile?' (doc required)':''}</option>
+              const rem      = getRemaining(t)
+              const dayLabel = rem === 1 ? '1 day left' : `${rem} days left`
+              return (
+                <option key={t.id} value={t.id} disabled={rem <= 0}>
+                  {t.label || t.name} — {rem <= 0 ? '0 days (unavailable)' : dayLabel}{t.requiresFile ? ' *' : ''}
+                </option>
+              )
             })}
           </select>
         </label>
@@ -460,26 +471,24 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
         {leaveType && selectedBal && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 14,
-            background: `${leaveType.color}15`,
-            border: `1px solid ${leaveType.color}55`,
+            background: hasBalance ? `${leaveType.color}15` : 'var(--danger-bg, #fdecea)',
+            border: `1px solid ${hasBalance ? leaveType.color + '55' : 'var(--danger)'}`,
             borderRadius: 8, padding: '10px 14px', marginBottom: 4,
           }}>
-            <span style={{ fontSize: 28, fontWeight: 700, color: isUnlimited || selectedRem > 0 ? leaveType.color : 'var(--danger)', lineHeight: 1 }}>
-              {isUnlimited ? '∞' : selectedRem}
+            <span style={{ fontSize: 28, fontWeight: 700, color: hasBalance ? leaveType.color : 'var(--danger)', lineHeight: 1 }}>
+              {selectedRem}
             </span>
             <div>
               <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>
-                {isUnlimited ? 'No limit' : `day${selectedRem !== 1 ? 's' : ''} remaining`}
+                {hasBalance ? `day${selectedRem !== 1 ? 's' : ''} remaining` : 'No days remaining'}
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-                {isUnlimited
-                  ? `${selectedBal.used} day${selectedBal.used !== 1 ? 's' : ''} taken`
-                  : `${selectedBal.used} used of ${selectedBal.total} total`}
+                {selectedBal.used} used of {selectedBal.total} total
               </div>
             </div>
-            {!isUnlimited && selectedRem === 0 && (
+            {!hasBalance && (
               <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--danger)', fontWeight: 600 }}>
-                No days left
+                Cannot apply
               </span>
             )}
           </div>
@@ -506,7 +515,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
         {error   && <div className="error-box">{error}</div>}
         {success && <div className="success-box">{success}</div>}
         <p className="hint">* indicates a supporting document is required by Singapore law.</p>
-        <button className="primary-btn" onClick={handleSubmit}>Submit application</button>
+        <button className="primary-btn" onClick={handleSubmit} disabled={!hasBalance}>Submit application</button>
       </div>
 
       <div className="panel">
@@ -515,21 +524,18 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
           {leaveTypes.map((lt) => {
             const bal = balances[lt.id] || { total: 0, used: 0 }
             const rem = bal.total - bal.used
-            const unlimited = bal.total === 0 && lt.defaultDays === 0
-            const low = !unlimited && rem === 0
+            const exhausted = rem <= 0
             return (
               <div className="balance-card" key={lt.id}
-                style={{ borderTop: `3px solid ${lt.color}`, outline: form.type === lt.id ? `2px solid ${lt.color}` : 'none' }}>
-                <div className="balance-title" style={{ color: lt.color }}>{lt.label || lt.name}</div>
-                {unlimited
-                  ? <div className="balance-value">∞</div>
-                  : <div className="balance-value" style={{ color: low ? 'var(--danger)' : lt.color }}>{rem}</div>}
-                <div className="balance-sub">
-                  {unlimited
-                    ? `${bal.used} day${bal.used !== 1 ? 's' : ''} taken`
-                    : `${bal.used} used / ${bal.total} total`}
-                </div>
-                {low && <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600, marginTop: 2 }}>No days left</div>}
+                style={{
+                  borderTop: `3px solid ${exhausted ? 'var(--muted)' : lt.color}`,
+                  outline: form.type === lt.id ? `2px solid ${lt.color}` : 'none',
+                  opacity: exhausted ? 0.65 : 1,
+                }}>
+                <div className="balance-title" style={{ color: exhausted ? 'var(--muted)' : lt.color }}>{lt.label || lt.name}</div>
+                <div className="balance-value" style={{ color: exhausted ? 'var(--danger)' : lt.color }}>{rem}</div>
+                <div className="balance-sub">{bal.used} used / {bal.total} total</div>
+                {exhausted && <div style={{ fontSize: 11, color: 'var(--danger)', fontWeight: 600, marginTop: 2 }}>Unavailable</div>}
               </div>
             )
           })}
