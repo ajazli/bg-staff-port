@@ -22,6 +22,20 @@ export const WORKDAY_OPTIONS = [
 ]
 
 export const SG_PUBLIC_HOLIDAYS = {
+  // 2025
+  '2025-01-01': { name: "New Year's Day" },
+  '2025-01-29': { name: 'Chinese New Year' },
+  '2025-01-30': { name: 'Chinese New Year' },
+  '2025-03-31': { name: 'Hari Raya Puasa' },
+  '2025-04-18': { name: 'Good Friday' },
+  '2025-05-01': { name: 'Labour Day' },
+  '2025-05-12': { name: 'Vesak Day' },
+  '2025-06-06': { name: 'Hari Raya Haji' },
+  '2025-08-09': { name: 'National Day' },
+  '2025-08-11': { name: 'National Day (in lieu)' },
+  '2025-10-20': { name: 'Deepavali' },
+  '2025-12-25': { name: 'Christmas Day' },
+  // 2026
   '2026-01-01': { name: "New Year's Day" },
   '2026-02-17': { name: 'Chinese New Year' },
   '2026-02-18': { name: 'Chinese New Year' },
@@ -36,6 +50,20 @@ export const SG_PUBLIC_HOLIDAYS = {
   '2026-11-08': { name: 'Deepavali' },
   '2026-11-09': { name: 'Deepavali (in lieu)' },
   '2026-12-25': { name: 'Christmas Day' },
+  // 2027
+  '2027-01-01': { name: "New Year's Day" },
+  '2027-01-26': { name: 'Chinese New Year' },
+  '2027-01-27': { name: 'Chinese New Year' },
+  '2027-03-10': { name: 'Hari Raya Puasa' },
+  '2027-03-26': { name: 'Good Friday' },
+  '2027-05-01': { name: 'Labour Day' },
+  '2027-05-03': { name: 'Labour Day (in lieu)' },
+  '2027-05-17': { name: 'Hari Raya Haji' },
+  '2027-05-20': { name: 'Vesak Day' },
+  '2027-08-09': { name: 'National Day' },
+  '2027-10-27': { name: 'Deepavali' },
+  '2027-12-25': { name: 'Christmas Day' },
+  '2027-12-27': { name: 'Christmas Day (in lieu)' },
 }
 
 function defaultBalances() {

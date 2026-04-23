@@ -121,7 +121,7 @@ router.post('/clock-out', async (req, res) => {
     await pool.query('BEGIN')
 
     if (ph) {
-      // Credit PH OIL whenever staff works on a public holiday
+      // Credit PH OIL whenever staff works on a public holiday (once per date)
       const existing = await pool.query(
         'SELECT id FROM attendance WHERE user_id=$1 AND date=$2 AND ph_credit_added=true',
         [uid, dateStr]
@@ -133,6 +133,8 @@ router.post('/clock-out', async (req, res) => {
            ON CONFLICT (user_id, leave_type) DO UPDATE SET total = leave_balances.total + 1`,
           [uid]
         )
+      } else {
+        phCreditSkipped = true  // already credited for this date (e.g. clocked in/out twice)
       }
     }
 
