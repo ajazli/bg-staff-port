@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { SG_PUBLIC_HOLIDAYS } from '../data/mockData'
 import { localDateToStr, parseLocalDate } from '../utils'
 import Modal from './Modal'
 
@@ -17,63 +16,37 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
   const now   = new Date()
   const [year,  setYear]    = useState(now.getFullYear())
   const [month, setMonth]   = useState(now.getMonth())
-  const [selected, setSelected]   = useState(null)   // date string
-  const [addModal, setAddModal]   = useState(null)   // date string for new event
+  const [selected, setSelected]   = useState(null)
+  const [addModal, setAddModal]   = useState(null)
   const [newEvent, setNewEvent]   = useState({ title: '', color: '#AB47BC' })
 
   const isAdmin    = currentUser?.role === 'admin'
   const isTeamLead = currentUser?.role === 'team_lead'
   const today      = localDateToStr(now)
 
-  // Which user IDs this viewer can see schedules/leaves for
   const visibleUids = useMemo(() => {
     if (isAdmin) return Object.keys(db.users)
     if (isTeamLead) return [currentUserId, ...helpers.getAllSubordinates(currentUserId)]
     return [currentUserId]
   }, [db.users, isAdmin, isTeamLead, currentUserId, helpers])
 
-  // Build event map: dateStr → [event]
   const eventMap = useMemo(() => {
     const map = {}
     const add = (date, ev) => { if (!map[date]) map[date] = []; map[date].push(ev) }
-
-    // Public holidays
-    Object.entries(SG_PUBLIC_HOLIDAYS).forEach(([date, ph]) => {
-      add(date, { type: 'ph', label: ph.name, color: '#FF9800', key: `ph-${date}` })
-    })
 
     // Admin calendar events
     ;(db.calendarEvents || []).forEach((ev) => {
       add(ev.date, { type: 'event', label: ev.title, color: ev.color, id: ev.id, key: `ev-${ev.id}`, createdBy: ev.createdBy })
     })
 
-    // Schedules
-    visibleUids.forEach((uid) => {
-      ;(db.schedules?.[uid] || []).forEach((shift) => {
-        const tpl    = helpers.getShiftTemplate(shift.templateId)
-        const branch = helpers.getBranch(shift.branchId)
-        const color  = tpl?.color || branch?.color || '#7986CB'
-        const uname  = uid === currentUserId ? 'My shift' : db.users[uid]?.name || uid
-        add(shift.date, {
-          type:  'shift',
-          label: `${uname}: ${tpl?.name || shift.startTime}–${shift.endTime}`,
-          color,
-          uid,
-          shiftId: shift.id,
-          key: `sh-${shift.id}`,
-        })
-      })
-    })
-
-    // Birthdays — pin to current calendar year
+    // Birthdays
     Object.entries(db.users).forEach(([uid, u]) => {
       if (!u.birthday) return
       const parts = String(u.birthday).slice(0, 10).split('-')
-      const bdayStr = `${year}-${parts[1]}-${parts[2]}`
-      add(bdayStr, { type: 'birthday', label: `🎂 ${u.name}'s birthday`, color: '#FF4081', uid, key: `bd-${uid}-${year}` })
+      add(`${year}-${parts[1]}-${parts[2]}`, { type: 'birthday', label: `🎂 ${u.name}'s birthday`, color: '#FF4081', uid, key: `bd-${uid}-${year}` })
     })
 
-    // Approved leaves (expand date range)
+    // Approved leaves
     visibleUids.forEach((uid) => {
       ;(db.leaves[uid] || []).forEach((leave, li) => {
         if (leave.status !== 'approved') return
@@ -84,10 +57,7 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
         const end   = parseLocalDate(leave.end)
         for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           add(localDateToStr(new Date(d)), {
-            type:  'leave',
-            label: `${uname}: ${leave.type}`,
-            color,
-            uid,
+            type: 'leave', label: `${uname}: ${leave.type}`, color, uid,
             key: `lv-${uid}-${li}-${localDateToStr(new Date(d))}`,
           })
         }
@@ -97,7 +67,6 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
     return map
   }, [db, visibleUids, currentUserId, helpers, year])
 
-  // Calendar grid days (Monday-first)
   const cells = useMemo(() => {
     const first    = new Date(year, month, 1)
     const last     = new Date(year, month + 1, 0)
@@ -111,7 +80,10 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
   const nextMonth = () => { if (month === 11) { setMonth(0);  setYear(y => y + 1) } else setMonth(m => m + 1) }
   const goToday   = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
 
-  const selectedEvents = selected ? (eventMap[selected] || []) : []
+  const gridEvents = (ds) => eventMap[ds] || []
+  const allDayEvents = selected ? (eventMap[selected] || []) : []
+  const detailEvents = allDayEvents.filter(ev => ev.type !== 'leave')
+  const detailLeaves = allDayEvents.filter(ev => ev.type === 'leave')
 
   const handleAddEvent = () => {
     if (!newEvent.title.trim()) return
@@ -120,15 +92,14 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
     setAddModal(null)
   }
 
-  // Legend entries
   const leaveTypes = db.leaveTypes || []
   const legendItems = [
-    { label: 'Public Holiday', color: '#FF9800' },
     { label: 'Calendar Event', color: '#AB47BC' },
-    { label: 'Shift',          color: '#7986CB' },
     { label: 'Birthday',       color: '#FF4081' },
     ...leaveTypes.map((t) => ({ label: t.label || t.name, color: t.color })),
   ]
+
+  const hasDetail = selected && (allDayEvents.length > 0)
 
   return (
     <div className="cal-root">
@@ -147,36 +118,29 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
         {DAY_LABELS.map((d) => <div key={d} className="cal-day-hdr">{d}</div>)}
         {cells.map((day, idx) => {
           if (!day) return <div key={`pad-${idx}`} className="cal-cell cal-pad" />
-          const ds     = localDateToStr(day)
-          const events = (eventMap[ds] || []).filter(ev => !isAdmin || ev.type !== 'shift')
-          const isPH   = !!SG_PUBLIC_HOLIDAYS[ds]
+          const ds      = localDateToStr(day)
+          const chips   = gridEvents(ds)
           const isToday = ds === today
           return (
             <div
               key={ds}
-              className={`cal-cell${isToday ? ' cal-today' : ''}${isPH ? ' cal-ph' : ''}`}
+              className={`cal-cell${isToday ? ' cal-today' : ''}`}
               onClick={() => setSelected(ds === selected ? null : ds)}
             >
               <div className="cal-day-num">{day.getDate()}</div>
               <div className="cal-chips">
-                {events.slice(0, 3).map((ev) => (
-                  <div
-                    key={ev.key}
-                    className="cal-chip"
+                {chips.slice(0, 3).map((ev) => (
+                  <div key={ev.key} className="cal-chip"
                     style={{ background: hexAlpha(ev.color, 0.15), color: ev.color, borderLeft: `3px solid ${ev.color}` }}
-                    title={ev.label}
-                  >
+                    title={ev.label}>
                     {ev.label}
                   </div>
                 ))}
-                {events.length > 3 && <div className="cal-chip-more">+{events.length - 3}</div>}
+                {chips.length > 3 && <div className="cal-chip-more">+{chips.length - 3}</div>}
               </div>
               {isAdmin && (
-                <button
-                  className="cal-add-btn"
-                  title="Add event"
-                  onClick={(e) => { e.stopPropagation(); setAddModal(ds); setSelected(null) }}
-                >+</button>
+                <button className="cal-add-btn" title="Add event"
+                  onClick={(e) => { e.stopPropagation(); setAddModal(ds); setSelected(null) }}>+</button>
               )}
             </div>
           )
@@ -184,10 +148,12 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
       </div>
 
       {/* Day detail panel */}
-      {selected && (selectedEvents.length > 0 || (isAdmin && (eventMap[selected]||[]).some(ev=>ev.type==='shift'))) && (
+      {hasDetail && (
         <div className="cal-detail">
           <div className="cal-detail-title">{helpers.fmtDate(selected)}</div>
-          {selectedEvents.map((ev) => (
+
+          {/* Calendar events and birthdays */}
+          {detailEvents.map((ev) => (
             <div key={ev.key} className="cal-detail-row" style={{ borderLeft: `4px solid ${ev.color}` }}>
               <span className="cal-detail-label">{ev.label}</span>
               <span className="cal-detail-type" style={{ color: ev.color }}>{ev.type}</span>
@@ -196,20 +162,18 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
               )}
             </div>
           ))}
-          {isAdmin && (() => {
-            const shifts = (eventMap[selected]||[]).filter(ev=>ev.type==='shift')
-            if(shifts.length===0) return null
-            return (
-              <div style={{marginTop:12}}>
-                <div style={{fontWeight:600,marginBottom:6,fontSize:13}}>On shift this day</div>
-                {shifts.map(ev=>(
-                  <div key={ev.key} className="cal-detail-row" style={{borderLeft:`4px solid ${ev.color}`}}>
-                    <span className="cal-detail-label">{ev.label}</span>
-                  </div>
-                ))}
-              </div>
-            )
-          })()}
+
+          {/* Who is on leave */}
+          {detailLeaves.length > 0 && (
+            <div style={{ marginTop: detailEvents.length > 0 ? 12 : 0 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 13 }}>On leave this day</div>
+              {detailLeaves.map((ev) => (
+                <div key={ev.key} className="cal-detail-row" style={{ borderLeft: `4px solid ${ev.color}` }}>
+                  <span className="cal-detail-label">{ev.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -234,8 +198,7 @@ export default function CalendarView({ db, helpers, currentUserId, currentUser, 
             <span>Color</span>
             <div className="color-row">
               {['#AB47BC','#5b7fb8','#43a047','#e53935','#fb8c00','#00acc1','#546e7a'].map((c) => (
-                <button
-                  key={c}
+                <button key={c}
                   className={`color-dot${newEvent.color === c ? ' selected' : ''}`}
                   style={{ background: c }}
                   onClick={() => setNewEvent({ ...newEvent, color: c })}

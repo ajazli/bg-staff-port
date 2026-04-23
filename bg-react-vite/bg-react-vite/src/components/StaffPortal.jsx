@@ -175,10 +175,10 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
                   <div className="break-status">
                     <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
                   </div>
-                  <div style={{fontSize:13,marginBottom:8,color:breakOver?'var(--danger)':'var(--muted)'}}>
+                  <div style={{ fontSize: 13, fontWeight: 'normal', marginBottom: 8, color: breakOver ? 'var(--danger)' : 'var(--muted)' }}>
                     {breakOver
-                      ? `⚠ Over by ${breakElapsedMins-60}m — please end break`
-                      : `Time remaining: ${breakMinsLeft}m ${String(breakSecsRem).padStart(2,'0')}s`}
+                      ? `Over by ${breakElapsedMins - 60}m — please end break`
+                      : `Time remaining: ${breakMinsLeft}m ${String(breakSecsRem).padStart(2, '0')}s`}
                   </div>
                   <button className="primary-btn break-end-btn" onClick={onBreakEnd}>End Break</button>
                 </>
@@ -561,7 +561,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
             )
           })}
         </div>
-        <p className="hint" style={{ marginTop: 8 }}>Balances are set by your admin.</p>
+        <p className="hint" style={{ marginTop: 8 }}>Annual leave and PH Off-in-Lieu are added automatically.</p>
       </div>
     </section>
   )

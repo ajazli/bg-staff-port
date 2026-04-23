@@ -140,16 +140,15 @@ function AttendancePanel({ db, helpers }) {
                     const taken = session.totalBreakMinutes || 0
                     const overshoot = allowance > 0 && taken > allowance
                     breakCell = (
-                      <Badge tone="warn">
+                      <Badge tone={overshoot ? 'danger' : 'warn'}>
                         {'On break ' + taken + 'm'}{allowance > 0 ? ' / ' + allowance + 'm' : ''}
-                        {overshoot ? ' ⚠' : ''}
                       </Badge>
                     )
                   } else if ((session.totalBreakMinutes || 0) > 0) {
                     const taken = session.totalBreakMinutes
                     const overshoot = allowance > 0 && taken > allowance
                     breakCell = (
-                      <span style={overshoot ? { color: 'var(--danger)', fontWeight: 600 } : { color: 'var(--muted)' }}>
+                      <span style={{ color: overshoot ? 'var(--danger)' : 'var(--muted)' }}>
                         {taken + 'm break taken'}{allowance > 0 ? ' / ' + allowance + 'm' : ''}
                       </span>
                     )
@@ -635,6 +634,10 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
   const [createForm, setCreateForm]   = useState({ name: '', username: '', role: 'staff', branchIds: [], reportsTo: '' })
   const [rowEdits, setRowEdits]       = useState({})
   const [saving, setSaving]           = useState({})
+  const [staffSearch, setStaffSearch] = useState('')
+  const [perfMonth, setPerfMonth]     = useState(() => {
+    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+  })
 
   const DAY_OPTIONS = [
     { value: 1, label: 'M' }, { value: 2, label: 'Tu' }, { value: 3, label: 'W' },
@@ -715,7 +718,12 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
       branchIds: prev.branchIds.includes(bid) ? prev.branchIds.filter((i) => i !== bid) : [...prev.branchIds, bid],
     }))
 
-  const nonAdminUsers = Object.entries(db.users).filter(([, u]) => u.role !== 'admin')
+  const nonAdminUsers = Object.entries(db.users)
+    .filter(([, u]) => u.role !== 'admin')
+    .filter(([uid, u]) => !staffSearch.trim() ||
+      u.name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
+      uid.toLowerCase().includes(staffSearch.toLowerCase())
+    )
 
   if (profileUid && db.users[profileUid]) {
     return (
@@ -732,7 +740,16 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
     <div>
       <div className="section-header">
         <div className="section-title">Team members</div>
-        <button className="primary-btn" onClick={() => setCreateModal(true)}>+ Add staff</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            className="si-input"
+            style={{ width: 200 }}
+            placeholder="Search by name or username…"
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+          />
+          <button className="primary-btn" onClick={() => setCreateModal(true)}>+ Add staff</button>
+        </div>
       </div>
 
       <div className="table-card">
@@ -832,6 +849,54 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Monthly Performance Panel */}
+      <div style={{ marginTop: 32 }}>
+        <div className="section-header" style={{ marginBottom: 12 }}>
+          <div className="section-title">Monthly performance</div>
+          <input
+            type="month"
+            className="si-time"
+            value={perfMonth}
+            onChange={(e) => setPerfMonth(e.target.value)}
+          />
+        </div>
+        <div className="table-card">
+          <table className="staff-inline-table">
+            <thead>
+              <tr>
+                <th>Staff</th>
+                <th title="Number of times clocked in late">Late count</th>
+                <th title="Total late minutes accumulated">Late mins</th>
+                <th title="Number of breakage reports submitted">Breakages</th>
+                <th title="Number of sessions where break exceeded allowance">Overshot break</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(db.users).filter(([, u]) => u.role !== 'admin').map(([uid, u]) => {
+                const attRecs = (db.attendance[uid] || []).filter((r) => r.date?.startsWith(perfMonth))
+                const lateCount = attRecs.filter((r) => r.isLate || r.lateMinutes > 0).length
+                const lateMins  = attRecs.reduce((s, r) => s + (r.lateMinutes || 0), 0)
+                const allowance = u.breakAllowanceMinutes || 0
+                const overshootCount = allowance > 0
+                  ? attRecs.filter((r) => (r.breakMinutes || 0) > allowance).length
+                  : 0
+                const breakageRecs = (db.breakages?.[uid] || []).filter((b) => b.date?.startsWith(perfMonth))
+                const breakageCount = breakageRecs.length
+                return (
+                  <tr key={uid}>
+                    <td>{u.name}</td>
+                    <td style={{ color: lateCount > 0 ? 'var(--danger)' : 'inherit' }}>{lateCount}</td>
+                    <td style={{ color: lateMins > 0 ? 'var(--danger)' : 'inherit' }}>{lateMins > 0 ? `${lateMins}m` : '—'}</td>
+                    <td style={{ color: breakageCount > 0 ? '#fb8c00' : 'inherit' }}>{breakageCount > 0 ? breakageCount : '—'}</td>
+                    <td style={{ color: overshootCount > 0 ? 'var(--danger)' : 'inherit' }}>{overshootCount > 0 ? overshootCount : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {createModal && (
