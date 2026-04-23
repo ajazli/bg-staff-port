@@ -416,7 +416,8 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
   const balances     = db.balances[userId] || {}
   const selectedBal  = leaveType ? (balances[leaveType.id] || { total: 0, used: 0 }) : null
   const selectedRem  = selectedBal ? selectedBal.total - selectedBal.used : 0
-  const isUnlimited  = leaveType?.defaultDays === 0
+  // Unlimited only when admin has not set a positive total AND type has no built-in default
+  const isUnlimited  = (selectedBal?.total ?? 0) === 0 && (leaveType?.defaultDays ?? 0) === 0
 
   const handleFile = (e) => {
     const file = e.target.files?.[0]
@@ -448,8 +449,9 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
           <span>Leave type</span>
           <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value, attachment: null })}>
             {leaveTypes.map((t) => {
-              const bal = (db.balances[userId]||{})[t.id]||{total:0,used:0}
-              const rem = t.defaultDays===0 ? 'Unlimited' : `${bal.total-bal.used} day${bal.total-bal.used!==1?'s':''} left`
+              const bal  = (db.balances[userId]||{})[t.id]||{total:0,used:0}
+              const unli = bal.total === 0 && t.defaultDays === 0
+              const rem  = unli ? 'Unlimited' : `${bal.total-bal.used} day${bal.total-bal.used!==1?'s':''} left`
               return <option key={t.id} value={t.id}>{t.label||t.name} — {rem}{t.requiresFile?' (doc required)':''}</option>
             })}
           </select>
@@ -513,7 +515,7 @@ function LeaveApplyTab({ userId, db, helpers, onSubmitLeave, leaveTypes }) {
           {leaveTypes.map((lt) => {
             const bal = balances[lt.id] || { total: 0, used: 0 }
             const rem = bal.total - bal.used
-            const unlimited = lt.defaultDays === 0
+            const unlimited = bal.total === 0 && lt.defaultDays === 0
             const low = !unlimited && rem === 0
             return (
               <div className="balance-card" key={lt.id}
