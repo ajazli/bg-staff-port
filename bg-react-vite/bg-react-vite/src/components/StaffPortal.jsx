@@ -789,15 +789,16 @@ function SettingsTab({ user, onChangePassword, onSaveProfile }) {
   const [profileError, setProfileError]     = useState('')
   const avatarRef = useRef()
 
+  const [uniformQty, setUniformQty]       = useState(user.uniformQuantity ?? 0)
   const [uniformSaving, setUniformSaving] = useState(false)
   const [uniformSuccess, setUniformSuccess] = useState('')
 
-  const handleUniformToggle = async (taken) => {
+  const handleUniformSave = async () => {
     setUniformSaving(true)
     setUniformSuccess('')
     try {
-      await onSaveProfile({ uniformTaken: taken })
-      setUniformSuccess(taken ? 'Marked as taken.' : 'Marked as returned.')
+      await onSaveProfile({ uniformQuantity: uniformQty })
+      setUniformSuccess('Uniform quantity saved.')
       setTimeout(() => setUniformSuccess(''), 3000)
     } finally {
       setUniformSaving(false)
@@ -878,22 +879,20 @@ function SettingsTab({ user, onChangePassword, onSaveProfile }) {
       <div className="panel" style={{ maxWidth: 420 }}>
         <div className="section-title">Company uniform</div>
         <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 12 }}>
-          Indicate whether you have taken a company uniform. Please remember to return it by your final shift.
+          Enter the number of uniform pieces you have taken. Set to 0 if none.
         </p>
-        {user.uniformTaken ? (
-          <>
-            <div style={{ background: '#fff3f3', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', color: 'var(--danger)', fontSize: 14, marginBottom: 12 }}>
-              Please ensure all company uniforms are returned by your final shift. Failure to do so will result in a replacement fee being deducted from your final paycheck.
-            </div>
-            <button className="ghost-btn" onClick={() => handleUniformToggle(false)} disabled={uniformSaving}>
-              {uniformSaving ? '…' : 'Mark as returned'}
-            </button>
-          </>
-        ) : (
-          <button className="primary-btn" onClick={() => handleUniformToggle(true)} disabled={uniformSaving}>
-            {uniformSaving ? '…' : 'Mark uniform as taken'}
-          </button>
+        {uniformQty > 0 && (
+          <div style={{ background: '#fff3f3', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', color: 'var(--danger)', fontSize: 14, marginBottom: 12 }}>
+            Please ensure all company uniforms are returned by your final shift. Failure to do so will result in a replacement fee being deducted from your final paycheck.
+          </div>
         )}
+        <label className="field" style={{ maxWidth: 160 }}>
+          <span>Quantity taken</span>
+          <input type="number" min={0} value={uniformQty} onChange={(e) => setUniformQty(Math.max(0, Number(e.target.value)))} />
+        </label>
+        <button className="primary-btn" onClick={handleUniformSave} disabled={uniformSaving}>
+          {uniformSaving ? '…' : 'Save'}
+        </button>
         {uniformSuccess && <div className="success-box" style={{ marginTop: 10 }}>{uniformSuccess}</div>}
       </div>
 

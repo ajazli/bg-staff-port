@@ -50,7 +50,7 @@ router.put('/:id', async (req, res) => {
     if (req.user.role !== 'admin' && req.user.userId !== id) {
       return res.status(403).json({ error: 'Forbidden' })
     }
-    const { name, role, branchIds, reportsTo, expectedStart, expectedEnd, workDays, memo, avatarUrl, birthday, breakAllowanceMinutes, startDate, uniformTaken } = req.body
+    const { name, role, branchIds, reportsTo, expectedStart, expectedEnd, workDays, memo, avatarUrl, birthday, breakAllowanceMinutes, startDate, uniformQuantity } = req.body
     const initials = name ? name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() : undefined
 
     const sets = []
@@ -70,7 +70,7 @@ router.put('/:id', async (req, res) => {
     if (birthday              !== undefined) add('birthday', birthday || null)
     if (breakAllowanceMinutes !== undefined) add('break_allowance_minutes', Number(breakAllowanceMinutes) || 0)
     if (startDate             !== undefined) add('start_date', startDate || null)
-    if (uniformTaken          !== undefined) add('uniform_taken', Boolean(uniformTaken))
+    if (uniformQuantity       !== undefined) add('uniform_quantity', Math.max(0, Number(uniformQuantity) || 0))
 
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' })
     vals.push(id)

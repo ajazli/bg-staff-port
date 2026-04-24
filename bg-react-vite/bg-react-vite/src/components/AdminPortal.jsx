@@ -505,9 +505,9 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
       </div>
 
       {/* Uniform warning */}
-      {u.uniformTaken && (
+      {(u.uniformQuantity > 0) && (
         <div style={{ background: '#fff3f3', border: '1px solid var(--danger)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: 'var(--danger)', fontSize: 14 }}>
-          Uniform taken. Please ensure all company uniforms are returned by the final shift. Failure to do so will result in a replacement fee being deducted from the final paycheck.
+          {u.uniformQuantity} uniform piece{u.uniformQuantity !== 1 ? 's' : ''} taken. Please ensure all company uniforms are returned by the final shift. Failure to do so will result in a replacement fee being deducted from the final paycheck.
         </div>
       )}
 
@@ -783,8 +783,8 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
                     </td>
                   ))}
                   <td>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: db.users[uid]?.uniformTaken ? 'var(--danger)' : 'var(--muted)' }}>
-                      {db.users[uid]?.uniformTaken ? 'Taken' : 'Not taken'}
+                    <span style={{ fontSize: 12, fontWeight: 600, color: (db.users[uid]?.uniformQuantity > 0) ? 'var(--danger)' : 'var(--muted)' }}>
+                      {db.users[uid]?.uniformQuantity > 0 ? `${db.users[uid].uniformQuantity} taken` : '—'}
                     </span>
                   </td>
                   <td><input type="number" className="si-num" min={0} style={{ width: 60 }} value={edit.breakAllowanceMins} onChange={(e) => setField(uid, 'breakAllowanceMins', Number(e.target.value))} /></td>
