@@ -789,6 +789,21 @@ function SettingsTab({ user, onChangePassword, onSaveProfile }) {
   const [profileError, setProfileError]     = useState('')
   const avatarRef = useRef()
 
+  const [uniformSaving, setUniformSaving] = useState(false)
+  const [uniformSuccess, setUniformSuccess] = useState('')
+
+  const handleUniformToggle = async (taken) => {
+    setUniformSaving(true)
+    setUniformSuccess('')
+    try {
+      await onSaveProfile({ uniformTaken: taken })
+      setUniformSuccess(taken ? 'Marked as taken.' : 'Marked as returned.')
+      setTimeout(() => setUniformSuccess(''), 3000)
+    } finally {
+      setUniformSaving(false)
+    }
+  }
+
   const handlePwSubmit = async () => {
     setPwError('')
     setPwSuccess('')
@@ -858,6 +873,28 @@ function SettingsTab({ user, onChangePassword, onSaveProfile }) {
         <button className="primary-btn" onClick={handleSaveProfile} disabled={profileSaving}>
           {profileSaving ? 'Saving…' : 'Save profile'}
         </button>
+      </div>
+
+      <div className="panel" style={{ maxWidth: 420 }}>
+        <div className="section-title">Company uniform</div>
+        <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 12 }}>
+          Indicate whether you have taken a company uniform. Please remember to return it by your final shift.
+        </p>
+        {user.uniformTaken ? (
+          <>
+            <div style={{ background: '#fff3f3', border: '1px solid var(--danger)', borderRadius: 8, padding: '10px 14px', color: 'var(--danger)', fontSize: 14, marginBottom: 12 }}>
+              Please ensure all company uniforms are returned by your final shift. Failure to do so will result in a replacement fee being deducted from your final paycheck.
+            </div>
+            <button className="ghost-btn" onClick={() => handleUniformToggle(false)} disabled={uniformSaving}>
+              {uniformSaving ? '…' : 'Mark as returned'}
+            </button>
+          </>
+        ) : (
+          <button className="primary-btn" onClick={() => handleUniformToggle(true)} disabled={uniformSaving}>
+            {uniformSaving ? '…' : 'Mark uniform as taken'}
+          </button>
+        )}
+        {uniformSuccess && <div className="success-box" style={{ marginTop: 10 }}>{uniformSuccess}</div>}
       </div>
 
       <div className="panel" style={{ maxWidth: 420 }}>

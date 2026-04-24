@@ -504,27 +504,12 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
         })}
       </div>
 
-      {/* Annual leave proration based on start date */}
-      {u.startDate && (() => {
-        const start   = new Date(u.startDate + 'T00:00:00')
-        const today   = new Date()
-        const months  = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
-        const annualTotal = db.balances[uid]?.['Annual Leave']?.total ?? 14
-        const recommended = months <= 2 ? 1 : Math.min(annualTotal, Math.round(months / 12 * annualTotal))
-        return (
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 14 }}>
-              <strong>Start date:</strong> {u.startDate} &nbsp;|&nbsp;
-              <strong>{months} months</strong> worked &nbsp;|&nbsp;
-              Prorated annual leave: <strong>{recommended} day{recommended !== 1 ? 's' : ''}</strong>
-            </span>
-            <button className="ghost-btn" style={{ padding: '4px 10px', fontSize: 13 }}
-              onClick={() => setBalance(uid, 'Annual Leave', 'total', recommended)}>
-              Apply {recommended}d
-            </button>
-          </div>
-        )
-      })()}
+      {/* Uniform warning */}
+      {u.uniformTaken && (
+        <div style={{ background: '#fff3f3', border: '1px solid var(--danger)', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: 'var(--danger)', fontSize: 14 }}>
+          Uniform taken. Please ensure all company uniforms are returned by the final shift. Failure to do so will result in a replacement fee being deducted from the final paycheck.
+        </div>
+      )}
 
       {/* Recent attendance */}
       <div className="section-title">Recent attendance</div>
@@ -610,23 +595,6 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
   )
 }
 
-// ─── Annual leave proration formula (matches server/routes/users.js) ─────────
-function calcProratedAnnualLeave(startDate) {
-  if (!startDate) return 0
-  const start = new Date(startDate + 'T00:00:00')
-  const today = new Date()
-  const months = (today.getFullYear() - start.getFullYear()) * 12 + (today.getMonth() - start.getMonth())
-  const fullYears = Math.floor(months / 12)
-  const remaining = months % 12
-  let total = 0
-  for (let y = 0; y < fullYears; y++) total += Math.min(14, 7 + y)
-  if (remaining > 0 || months <= 2) {
-    const ent = months <= 2 ? 0 : Math.min(14, 7 + fullYears)
-    total += months <= 2 ? 1 : Math.round(remaining / 12 * ent)
-  }
-  return Math.max(0, total)
-}
-
 // ─── Staff CRUD ──────────────────────────────────────────────────────────────
 function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, setBalance, resetPassword }) {
   const [profileUid, setProfileUid] = useState(null)
@@ -692,12 +660,7 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
         startDate: edit.startDate || null,
       })
       await Promise.all(
-        leaveTypes.map((lt) => {
-          const value = lt.id === 'Annual Leave'
-            ? calcProratedAnnualLeave(edit.startDate)
-            : (edit[`bal_${lt.id}`] ?? 0)
-          return setBalance(uid, lt.id, 'total', value)
-        })
+        leaveTypes.map((lt) => setBalance(uid, lt.id, 'total', edit[`bal_${lt.id}`] ?? 0))
       )
       setRowEdits((prev) => { const n = { ...prev }; delete n[uid]; return n })
     } finally {
@@ -759,10 +722,9 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
               <th>Name</th><th>Username</th><th>Role</th><th>Branches</th>
               <th>Start</th><th>End</th><th>Work days</th>
               {leaveTypes.map((lt) => (
-                <th key={lt.id} title={lt.id === 'Annual Leave' ? 'Annual Leave — auto-calculated from start date' : lt.name}>
-                  {lt.name.split(' ')[0]}{lt.id === 'Annual Leave' ? ' 🔒' : ''}
-                </th>
+                <th key={lt.id} title={lt.name}>{lt.name.split(' ')[0]}</th>
               ))}
+              <th title="Company uniform taken by staff">Uniform</th>
               <th title="Break allowance in minutes (0 = no limit)">Break (min)</th>
               <th title="Employment start date">Start date</th>
               <th></th>
@@ -813,25 +775,18 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
                       ))}
                     </div>
                   </td>
-                  {leaveTypes.map((lt) => {
-                    if (lt.id === 'Annual Leave') {
-                      const prorated = calcProratedAnnualLeave(edit.startDate)
-                      return (
-                        <td key={lt.id} title={edit.startDate ? `${prorated} days (prorated from ${edit.startDate})` : 'Set start date to calculate'}>
-                          <span className="si-num" style={{ display: 'inline-block', textAlign: 'center', color: edit.startDate ? 'var(--text)' : 'var(--muted)', fontStyle: edit.startDate ? 'normal' : 'italic' }}>
-                            {edit.startDate ? prorated : '—'}
-                          </span>
-                        </td>
-                      )
-                    }
-                    return (
-                      <td key={lt.id}>
-                        <input type="number" className="si-num" min={0}
-                          value={edit[`bal_${lt.id}`] ?? 0}
-                          onChange={(e) => setField(uid, `bal_${lt.id}`, Number(e.target.value))} />
-                      </td>
-                    )
-                  })}
+                  {leaveTypes.map((lt) => (
+                    <td key={lt.id}>
+                      <input type="number" className="si-num" min={0}
+                        value={edit[`bal_${lt.id}`] ?? 0}
+                        onChange={(e) => setField(uid, `bal_${lt.id}`, Number(e.target.value))} />
+                    </td>
+                  ))}
+                  <td>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: db.users[uid]?.uniformTaken ? 'var(--danger)' : 'var(--muted)' }}>
+                      {db.users[uid]?.uniformTaken ? 'Taken' : 'Not taken'}
+                    </span>
+                  </td>
                   <td><input type="number" className="si-num" min={0} style={{ width: 60 }} value={edit.breakAllowanceMins} onChange={(e) => setField(uid, 'breakAllowanceMins', Number(e.target.value))} /></td>
                   <td><input type="date" className="si-time" style={{ width: 120 }} value={edit.startDate} onChange={(e) => setField(uid, 'startDate', e.target.value)} /></td>
                   <td>
@@ -1105,9 +1060,17 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
   const [selectedUid, setSelectedUid] = useState('')
   const [modal, setModal]             = useState(false)
   const [weekModal, setWeekModal]     = useState(false)
+  const [recurModal, setRecurModal]   = useState(false)
+  const [recurAssigning, setRecurAssigning] = useState(false)
   const [form, setForm]               = useState({ date: localDateToStr(new Date()), branchId: '', templateId: '', startTime: '09:00', endTime: '18:00', note: '', breakAllowed: true })
   const [weekForm, setWeekForm]       = useState({
     pickedDate: localDateToStr(new Date()), branchId: '', templateId: '',
+    startTime: '09:00', endTime: '18:00',
+    days: [1, 2, 3, 4, 5],
+    breakAllowed: true,
+  })
+  const [recurForm, setRecurForm]     = useState({
+    startDate: localDateToStr(new Date()), endDate: '', branchId: '', templateId: '',
     startTime: '09:00', endTime: '18:00',
     days: [1, 2, 3, 4, 5],
     breakAllowed: true,
@@ -1144,6 +1107,48 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
   const toggleWeekDay = (day) =>
     setWeekForm((f) => ({ ...f, days: f.days.includes(day) ? f.days.filter((d) => d !== day) : [...f.days, day] }))
 
+  const toggleRecurDay = (day) =>
+    setRecurForm((f) => ({ ...f, days: f.days.includes(day) ? f.days.filter((d) => d !== day) : [...f.days, day] }))
+
+  const handleRecurTemplateChange = (templateId) => {
+    const tpl = helpers.getShiftTemplate(templateId)
+    setRecurForm((f) => ({ ...f, templateId, startTime: tpl?.startTime || f.startTime, endTime: tpl?.endTime || f.endTime }))
+  }
+
+  const handleAssignRecurring = async () => {
+    if (!selectedUid || !recurForm.startDate || !recurForm.endDate || !recurForm.branchId || recurForm.days.length === 0) return
+    setRecurAssigning(true)
+    try {
+      const start = new Date(recurForm.startDate + 'T00:00:00')
+      const end   = new Date(recurForm.endDate   + 'T00:00:00')
+      for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dow = d.getDay()
+        if (recurForm.days.includes(dow)) {
+          await assignShift(selectedUid, {
+            date: localDateToStr(new Date(d)),
+            branchId: recurForm.branchId, templateId: recurForm.templateId,
+            startTime: recurForm.startTime, endTime: recurForm.endTime,
+            breakAllowed: recurForm.breakAllowed,
+          })
+        }
+      }
+      setRecurModal(false)
+    } finally {
+      setRecurAssigning(false)
+    }
+  }
+
+  const recurDateCount = (() => {
+    if (!recurForm.startDate || !recurForm.endDate) return 0
+    const start = new Date(recurForm.startDate + 'T00:00:00')
+    const end   = new Date(recurForm.endDate   + 'T00:00:00')
+    let count = 0
+    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      if (recurForm.days.includes(d.getDay())) count++
+    }
+    return count
+  })()
+
   const userSchedule = selectedUid ? (db.schedules?.[selectedUid] || []).slice().sort((a, b) => a.date.localeCompare(b.date)) : []
 
   return (
@@ -1154,6 +1159,7 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
           <div className="stack-inline">
             <button className="primary-btn" onClick={() => setModal(true)}>+ Assign shift</button>
             <button className="ghost-btn" onClick={() => setWeekModal(true)}>+ Assign week</button>
+            <button className="ghost-btn" onClick={() => setRecurModal(true)}>+ Recurring</button>
           </div>
         )}
       </div>
@@ -1258,6 +1264,54 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
           <label className="check-chip"><input type="checkbox" checked={weekForm.breakAllowed} onChange={(e)=>setWeekForm({...weekForm,breakAllowed:e.target.checked})} />Allow break</label>
           <button className="primary-btn" onClick={handleAssignWeek} disabled={weekForm.days.length === 0 || !weekForm.branchId}>
             Assign {weekForm.days.length} day{weekForm.days.length !== 1 ? 's' : ''}
+          </button>
+        </Modal>
+      )}
+
+      {recurModal && (
+        <Modal title={`Recurring shifts — ${db.users[selectedUid]?.name}`} onClose={() => setRecurModal(false)}>
+          <div className="two-col-form">
+            <label className="field"><span>Start date</span>
+              <input type="date" value={recurForm.startDate} onChange={(e) => setRecurForm({ ...recurForm, startDate: e.target.value })} />
+            </label>
+            <label className="field"><span>End date</span>
+              <input type="date" value={recurForm.endDate} min={recurForm.startDate} onChange={(e) => setRecurForm({ ...recurForm, endDate: e.target.value })} />
+            </label>
+          </div>
+          <div className="field"><span>Repeat on days</span>
+            <div className="si-chips" style={{ marginTop: 6 }}>
+              {[{v:1,l:'Mon'},{v:2,l:'Tue'},{v:3,l:'Wed'},{v:4,l:'Thu'},{v:5,l:'Fri'},{v:6,l:'Sat'},{v:0,l:'Sun'}].map(({v,l}) => (
+                <button key={v} type="button"
+                  className={`day-toggle${recurForm.days.includes(v) ? ' active' : ''}`}
+                  onClick={() => toggleRecurDay(v)}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <label className="field"><span>Branch</span>
+            <select value={recurForm.branchId} onChange={(e) => setRecurForm({ ...recurForm, branchId: e.target.value })}>
+              <option value="">— Select branch —</option>
+              {db.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+          <label className="field"><span>Shift template</span>
+            <select value={recurForm.templateId} onChange={(e) => handleRecurTemplateChange(e.target.value)}>
+              <option value="">— Custom / none —</option>
+              {(db.shiftTemplates || []).map((t) => <option key={t.id} value={t.id}>{t.name} ({t.startTime}–{t.endTime})</option>)}
+            </select>
+          </label>
+          <div className="two-col-form">
+            <label className="field"><span>Start time</span><input type="time" value={recurForm.startTime} onChange={(e) => setRecurForm({ ...recurForm, startTime: e.target.value })} /></label>
+            <label className="field"><span>End time</span><input type="time" value={recurForm.endTime} onChange={(e) => setRecurForm({ ...recurForm, endTime: e.target.value })} /></label>
+          </div>
+          <label className="check-chip"><input type="checkbox" checked={recurForm.breakAllowed} onChange={(e) => setRecurForm({ ...recurForm, breakAllowed: e.target.checked })} />Allow break</label>
+          {recurDateCount > 0 && (
+            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+              Will assign {recurDateCount} shift{recurDateCount !== 1 ? 's' : ''} (existing dates will be overwritten)
+            </div>
+          )}
+          <button className="primary-btn" onClick={handleAssignRecurring}
+            disabled={recurAssigning || recurDateCount === 0 || !recurForm.branchId || recurForm.days.length === 0}>
+            {recurAssigning ? `Assigning…` : `Assign ${recurDateCount} shift${recurDateCount !== 1 ? 's' : ''}`}
           </button>
         </Modal>
       )}

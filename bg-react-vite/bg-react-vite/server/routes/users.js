@@ -50,7 +50,7 @@ router.put('/:id', async (req, res) => {
     if (req.user.role !== 'admin' && req.user.userId !== id) {
       return res.status(403).json({ error: 'Forbidden' })
     }
-    const { name, role, branchIds, reportsTo, expectedStart, expectedEnd, workDays, memo, avatarUrl, birthday, breakAllowanceMinutes, startDate } = req.body
+    const { name, role, branchIds, reportsTo, expectedStart, expectedEnd, workDays, memo, avatarUrl, birthday, breakAllowanceMinutes, startDate, uniformTaken } = req.body
     const initials = name ? name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase() : undefined
 
     const sets = []
@@ -70,32 +70,12 @@ router.put('/:id', async (req, res) => {
     if (birthday              !== undefined) add('birthday', birthday || null)
     if (breakAllowanceMinutes !== undefined) add('break_allowance_minutes', Number(breakAllowanceMinutes) || 0)
     if (startDate             !== undefined) add('start_date', startDate || null)
+    if (uniformTaken          !== undefined) add('uniform_taken', Boolean(uniformTaken))
 
     if (!sets.length) return res.status(400).json({ error: 'Nothing to update' })
     vals.push(id)
     const { rows } = await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $${n} RETURNING *`, vals)
     if (!rows[0]) return res.status(404).json({ error: 'User not found' })
-
-    // Feature 1: auto-prorate Annual Leave when startDate is being set
-    if (startDate) {
-      const start = new Date(startDate + 'T00:00:00')
-      const today = new Date()
-      const months = (today.getFullYear()-start.getFullYear())*12+(today.getMonth()-start.getMonth())
-      const fullYears = Math.floor(months/12)
-      const remaining = months%12
-      let total = 0
-      for(let y=0;y<fullYears;y++) total+=Math.min(14,7+y)
-      if(remaining>0||months<=2){
-        const ent = months<=2?0:Math.min(14,7+fullYears)
-        total += months<=2?1:Math.round(remaining/12*ent)
-      }
-      total = Math.max(0,total)
-      await pool.query(
-        `INSERT INTO leave_balances(user_id,leave_type,total,used) VALUES($1,'Annual Leave',$2,0)
-         ON CONFLICT(user_id,leave_type) DO UPDATE SET total=$2`,
-        [id,total]
-      )
-    }
 
     res.json(rows[0])
   } catch (err) {
