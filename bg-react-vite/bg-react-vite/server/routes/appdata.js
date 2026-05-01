@@ -32,6 +32,7 @@ function transformUser(row) {
     breakAllowanceMinutes: row.break_allowance_minutes || 0,
     startDate:             row.start_date instanceof Date ? row.start_date.toISOString().slice(0, 10)
                            : row.start_date ? String(row.start_date).slice(0, 10) : null,
+    uniformQuantity:       row.uniform_quantity ?? 0,
   }
 }
 
@@ -211,6 +212,29 @@ router.get('/', authenticate, async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to load app data' })
+  }
+})
+
+// Lightweight endpoint — only active sessions, used for live-attendance polling
+router.get('/active-sessions', authenticate, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM active_sessions')
+    const activeSessions = {}
+    rows.forEach((row) => {
+      activeSessions[row.user_id] = {
+        startedAt:         row.started_at,
+        branchId:          row.branch_id,
+        branchName:        row.branch_name,
+        locOk:             row.loc_ok,
+        onBreak:           row.on_break || false,
+        breakStartedAt:    row.break_started_at || null,
+        totalBreakMinutes: row.total_break_minutes || 0,
+        roleOfDay:         row.role_of_day || '',
+      }
+    })
+    res.json(activeSessions)
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' })
   }
 })
 

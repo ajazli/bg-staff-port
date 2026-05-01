@@ -387,6 +387,13 @@ export function usePortalState() {
     setDb((prev) => ({ ...prev, calendarEvents: (prev.calendarEvents || []).filter((e) => e.id !== id) }))
   }
 
+  const refreshActiveSessions = useCallback(async () => {
+    try {
+      const sessions = await api.getActiveSessions()
+      setDb((prev) => prev ? { ...prev, activeSessions: sessions } : prev)
+    } catch { /* ignore */ }
+  }, [])
+
   return {
     db,
     loading,
@@ -432,6 +439,7 @@ export function usePortalState() {
     // calendar
     addCalendarEvent,
     deleteCalendarEvent,
+    refreshActiveSessions,
     // breakages
     submitBreakage,
     // leave types

@@ -1056,7 +1056,7 @@ function dayInWeek(mondayStr, dayNum) {
 }
 
 // ─── Schedule ────────────────────────────────────────────────────────────────
-function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId }) {
+function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId, loadData }) {
   const [selectedUid, setSelectedUid] = useState('')
   const [modal, setModal]             = useState(false)
   const [weekModal, setWeekModal]     = useState(false)
@@ -1097,10 +1097,11 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
   const handleAssignWeek = async () => {
     if (!selectedUid || !weekForm.pickedDate || !weekForm.branchId || weekForm.days.length === 0) return
     const monday = getMondayOfWeek(weekForm.pickedDate)
-    for (const day of weekForm.days) {
+    await Promise.all(weekForm.days.map((day) => {
       const date = dayInWeek(monday, day === 0 ? 7 : day)
-      await assignShift(selectedUid, { date, branchId: weekForm.branchId, templateId: weekForm.templateId, startTime: weekForm.startTime, endTime: weekForm.endTime, breakAllowed: weekForm.breakAllowed })
-    }
+      return assignShift(selectedUid, { date, branchId: weekForm.branchId, templateId: weekForm.templateId, startTime: weekForm.startTime, endTime: weekForm.endTime, breakAllowed: weekForm.breakAllowed })
+    }))
+    await loadData()
     setWeekModal(false)
   }
 
@@ -1121,17 +1122,16 @@ function SchedulePanel({ db, helpers, assignShift, deleteShift, currentUserId })
     try {
       const start = new Date(recurForm.startDate + 'T00:00:00')
       const end   = new Date(recurForm.endDate   + 'T00:00:00')
+      const dates = []
       for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dow = d.getDay()
-        if (recurForm.days.includes(dow)) {
-          await assignShift(selectedUid, {
-            date: localDateToStr(new Date(d)),
-            branchId: recurForm.branchId, templateId: recurForm.templateId,
-            startTime: recurForm.startTime, endTime: recurForm.endTime,
-            breakAllowed: recurForm.breakAllowed,
-          })
-        }
+        if (recurForm.days.includes(d.getDay())) dates.push(localDateToStr(new Date(d)))
       }
+      await Promise.all(dates.map((date) => assignShift(selectedUid, {
+        date, branchId: recurForm.branchId, templateId: recurForm.templateId,
+        startTime: recurForm.startTime, endTime: recurForm.endTime,
+        breakAllowed: recurForm.breakAllowed,
+      })))
+      await loadData()
       setRecurModal(false)
     } finally {
       setRecurAssigning(false)
@@ -1453,7 +1453,7 @@ export default function AdminPortal({ state }) {
     addCalendarEvent, deleteCalendarEvent,
     changePassword, logout,
     addLeaveType, saveLeaveType, deleteLeaveType,
-    leaveTypes, loadData,
+    leaveTypes, loadData, refreshActiveSessions,
   } = state
 
   const [activeTab, setActiveTab] = useState('attendance')
@@ -1469,11 +1469,11 @@ export default function AdminPortal({ state }) {
       .map(([uid, u]) => ({ uid, name: u.name }))
   }, [db])
 
-  // Auto-refresh every 60 seconds to catch late clock-ins
+  // Poll only active sessions every 30 seconds — much lighter than full loadData()
   useEffect(() => {
-    const id = setInterval(() => { loadData().catch(console.error) }, 60000)
+    const id = setInterval(refreshActiveSessions, 30000)
     return () => clearInterval(id)
-  }, [loadData])
+  }, [refreshActiveSessions])
 
   // Detect staff who are ≥15 min late and fire dismissable alerts
   useEffect(() => {
@@ -1544,7 +1544,7 @@ export default function AdminPortal({ state }) {
       {activeTab === 'attendance' && <AttendancePanel db={db} helpers={helpers} />}
       {activeTab === 'leaves'     && <LeavesPanel db={db} helpers={helpers} actLeave={actLeave} currentUserId={currentUserId} />}
       {activeTab === 'breakages'  && <BreakagesPanel db={db} helpers={helpers} />}
-      {activeTab === 'schedule'   && <SchedulePanel db={db} helpers={helpers} assignShift={assignShift} deleteShift={deleteShift} currentUserId={currentUserId} />}
+      {activeTab === 'schedule'   && <SchedulePanel db={db} helpers={helpers} assignShift={assignShift} deleteShift={deleteShift} currentUserId={currentUserId} loadData={loadData} />}
       {activeTab === 'staff'      && (
         <StaffPanel db={db} helpers={helpers} leaveTypes={leaveTypes}
           addUser={addUser} saveStaff={saveStaff} deleteUser={deleteUser}

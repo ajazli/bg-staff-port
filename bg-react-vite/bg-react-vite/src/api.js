@@ -34,7 +34,8 @@ export const api = {
   me:             ()                               => req('GET',  '/auth/me'),
 
   // App data (single call returns everything)
-  getAppData: () => req('GET', '/app-data'),
+  getAppData:        () => req('GET', '/app-data'),
+  getActiveSessions: () => req('GET', '/app-data/active-sessions'),
 
   // Users
   createUser:    (data)                        => req('POST',   '/users',                  data),
