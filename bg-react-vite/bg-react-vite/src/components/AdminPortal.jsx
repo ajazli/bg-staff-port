@@ -515,10 +515,10 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
       <div className="section-title">Recent attendance</div>
       <div className="table-card" style={{ marginBottom: 20 }}>
         <table>
-          <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Timing</th></tr></thead>
+          <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Timing</th><th>EOD Note</th></tr></thead>
           <tbody>
             {attendance.length === 0
-              ? <tr><td colSpan="6" className="empty-cell">No attendance records</td></tr>
+              ? <tr><td colSpan="7" className="empty-cell">No attendance records</td></tr>
               : attendance.map((rec) => (
                 <tr key={rec.id || rec.date}>
                   <td>{helpers.fmtDate(rec.date)}</td>
@@ -533,6 +533,7 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
                       ))}
                     </div>
                   </td>
+                  <td className="td-reason" style={{ maxWidth: 220 }}>{rec.eodNote || '—'}</td>
                 </tr>
               ))}
           </tbody>

@@ -145,7 +145,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
         <button
           className={`primary-btn${clockSession.active ? ' danger' : ''}`}
           onClick={clockSession.active ? openEodModal : handleClockIn}
-          disabled={gpsStatus === 'checking'}
+          disabled={!clockSession.active && gpsStatus === 'checking'}
         >
           {clockSession.active ? 'Clock Out' : 'Clock In'}
         </button>
