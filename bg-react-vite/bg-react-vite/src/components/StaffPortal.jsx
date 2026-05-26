@@ -22,14 +22,15 @@ function Stats({ weekHours, annualLeft, presentDays }) {
 const ROLES_OF_DAY = ['Incharge', 'Barista', 'Service', 'Grab Packer', 'Kitchen Staff', 'Dishwasher']
 
 function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd, onSetRoleOfDay, currentBranchId }) {
-  const [liveTime, setLiveTime]         = useState(new Date())
-  const [branchId, setBranchId]         = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
-  const [gpsStatus, setGpsStatus]       = useState('')  // 'checking' | 'ok' | error string
-  const [clockError, setClockError]     = useState('')
-  const [phNotice, setPhNotice]         = useState('')
-  const [eodModal, setEodModal]         = useState(false)
-  const [eodNote, setEodNote]           = useState('')
+  const [liveTime, setLiveTime]           = useState(new Date())
+  const [branchId, setBranchId]           = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
+  const [gpsStatus, setGpsStatus]         = useState('')  // 'checking' | 'ok' | error string
+  const [clockError, setClockError]       = useState('')
+  const [phNotice, setPhNotice]           = useState('')
+  const [eodModal, setEodModal]           = useState(false)
+  const [eodNote, setEodNote]             = useState('')
   const [eodSubmitting, setEodSubmitting] = useState(false)
+  const [breakPending, setBreakPending]   = useState(false)
 
   useEffect(() => {
     const t = setInterval(() => setLiveTime(new Date()), 1000)
@@ -87,10 +88,23 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
     try {
       const result = await onClockOut(eodNote)
       setEodModal(false)
+      setGpsStatus('')
       if (result?.phCredited) setPhNotice(`You worked on ${result.phName}. One PH Off-in-Lieu day has been credited.`)
     } finally {
       setEodSubmitting(false)
     }
+  }
+
+  const handleBreakStart = async () => {
+    if (breakPending) return
+    setBreakPending(true)
+    try { await onBreakStart() } finally { setBreakPending(false) }
+  }
+
+  const handleBreakEnd = async () => {
+    if (breakPending) return
+    setBreakPending(true)
+    try { await onBreakEnd() } finally { setBreakPending(false) }
   }
 
   const todayShift = helpers.getTodayShift(userId)
@@ -137,8 +151,8 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
           </label>
         )}
 
-        {gpsStatus === 'checking' && <div className="gps-checking">Checking location…</div>}
-        {gpsStatus && gpsStatus !== 'checking' && gpsStatus !== 'ok' && <div className="error-box">{gpsStatus}</div>}
+        {!clockSession.active && gpsStatus === 'checking' && <div className="gps-checking">Checking location…</div>}
+        {!clockSession.active && gpsStatus && gpsStatus !== 'checking' && gpsStatus !== 'ok' && <div className="error-box">{gpsStatus}</div>}
         {clockError && <div className="error-box">{clockError}</div>}
         {phNotice && <div className="info-panel">{phNotice}</div>}
 
@@ -180,10 +194,14 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
                       ? `Over by ${breakElapsedMins - 60}m — please end break`
                       : `Time remaining: ${breakMinsLeft}m ${String(breakSecsRem).padStart(2, '0')}s`}
                   </div>
-                  <button className="primary-btn break-end-btn" onClick={onBreakEnd}>End Break</button>
+                  <button className="primary-btn break-end-btn" onClick={handleBreakEnd} disabled={breakPending}>
+                    {breakPending ? 'Ending…' : 'End Break'}
+                  </button>
                 </>
               ) : (
-                <button className="ghost-btn break-start-btn" onClick={onBreakStart}>Start Break</button>
+                <button className="ghost-btn break-start-btn" onClick={handleBreakStart} disabled={breakPending}>
+                  {breakPending ? 'Starting…' : 'Start Break'}
+                </button>
               )}
             </div>
           </>
@@ -659,9 +677,10 @@ function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
   const nowStr   = today.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })
 
   const INIT = { date: todayStr, time: nowStr, reason: '', attachment: null }
-  const [form, setForm]       = useState(INIT)
-  const [error, setError]     = useState('')
-  const [success, setSuccess] = useState('')
+  const [form, setForm]         = useState(INIT)
+  const [error, setError]       = useState('')
+  const [success, setSuccess]   = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const imgRef = useRef()
 
   const handleImg = (e) => {
@@ -676,10 +695,12 @@ function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
   }
 
   const handleSubmit = async () => {
+    if (submitting) return
     setError('')
     setSuccess('')
     if (!form.date) return setError('Please select a date.')
     if (!form.reason.trim()) return setError('Please describe what happened.')
+    setSubmitting(true)
     try {
       await onSubmitBreakage({
         date: form.date, time: form.time, reason: form.reason,
@@ -692,6 +713,8 @@ function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
       setTimeout(() => setSuccess(''), 4000)
     } catch (err) {
       setError(err.message || 'Failed to submit report.')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -747,7 +770,9 @@ function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
           )}
           {error   && <div className="error-box">{error}</div>}
           {success && <div className="success-box">{success}</div>}
-          <button className="primary-btn" onClick={handleSubmit}>Submit report</button>
+          <button className="primary-btn" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? 'Submitting…' : 'Submit report'}
+          </button>
         </div>
 
         {/* History */}

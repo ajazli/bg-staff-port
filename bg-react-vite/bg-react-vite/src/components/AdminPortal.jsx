@@ -89,17 +89,20 @@ function AttendancePanel({ db, helpers }) {
   const allAttendance = useMemo(() =>
     Object.entries(db.attendance).flatMap(([uid, records]) =>
       records.map((rec, idx) => ({ ...rec, uid, idx }))
-    ), [db.attendance])
+    ).sort((a, b) => b.date.localeCompare(a.date))
+  , [db.attendance])
 
-  const todayAttendance = allAttendance.filter((r) => r.date === today)
+  const todayAttendance = useMemo(() => allAttendance.filter((r) => r.date === today), [allAttendance, today])
 
-  const filteredAttendance = histFilter.trim()
+  const filteredAttendance = useMemo(() => histFilter.trim()
     ? allAttendance.filter(r => (db.users[r.uid]?.name||'').toLowerCase().includes(histFilter.toLowerCase()) || r.date.includes(histFilter))
     : allAttendance
+  , [allAttendance, histFilter, db.users])
 
-  const reportAttendance = monthFilter
-    ? filteredAttendance.filter(r=>r.date.startsWith(monthFilter))
-    : filteredAttendance
+  const reportAttendance = useMemo(() => {
+    const filtered = monthFilter ? filteredAttendance.filter(r => r.date.startsWith(monthFilter)) : filteredAttendance
+    return filtered
+  }, [filteredAttendance, monthFilter])
 
   function downloadCSV() {
     const headers = ['Staff','Date','Expected Start','Expected End','In','Out','Hours','Branch','Location','Late (min)','Early Leave (min)','Overtime (min)','Break (min)','Role','EOD Note']
@@ -179,25 +182,29 @@ function AttendancePanel({ db, helpers }) {
               <input className="search-input" placeholder="Filter by name or date…" value={histFilter} onChange={e=>setHistFilter(e.target.value)} />
               <input type="month" className="si-time" value={monthFilter} onChange={e=>setMonthFilter(e.target.value)} style={{width:150}} />
               <button className="ghost-btn" onClick={downloadCSV}>⬇ Download CSV</button>
+              {reportAttendance.length > 0 && (
+                <span style={{fontSize:12,color:'var(--muted)',marginLeft:'auto',alignSelf:'center'}}>
+                  {reportAttendance.length} record{reportAttendance.length !== 1 ? 's' : ''}
+                  {!monthFilter && reportAttendance.length > 100 ? ' — use month filter to narrow results' : ''}
+                </span>
+              )}
             </div>
           )}
           <table>
-            <thead><tr><th>Staff</th><th>Date</th><th>Expected</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Location</th><th>Timing</th><th>Break</th><th>Role</th><th>EOD Note</th></tr></thead>
+            <thead><tr><th>Staff</th><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Location</th><th>Timing</th><th>Role</th><th>EOD Note</th></tr></thead>
             <tbody>
               {(tab === 'today' ? todayAttendance : reportAttendance).length === 0
-                ? <tr><td colSpan="12" className="empty-cell">No records</td></tr>
-                : (tab === 'today' ? todayAttendance : reportAttendance).map((rec) => (
-                  <tr key={`${rec.uid}-${rec.idx}`}>
+                ? <tr><td colSpan="10" className="empty-cell">No records</td></tr>
+                : (tab === 'today' ? todayAttendance : reportAttendance).slice(0, 200).map((rec) => (
+                  <tr key={`${rec.uid}-${rec.date}-${rec.in}`}>
                     <td>{db.users[rec.uid]?.name}</td>
-                    <td>{helpers.fmtDate(rec.date)}</td>
-                    <td>{rec.expectedStart || '—'} / {rec.expectedEnd || '—'}</td>
+                    <td style={{whiteSpace:'nowrap'}}>{helpers.fmtDate(rec.date)}</td>
                     <td>{rec.in}</td>
                     <td>{rec.out || '—'}</td>
-                    <td>{rec.hours || '—'}</td>
+                    <td style={{whiteSpace:'nowrap'}}>{rec.hours || '—'}</td>
                     <td>{rec.branchName}</td>
                     <td><Badge tone={rec.locOk ? 'success' : 'danger'}>{rec.locOk ? 'On-site' : 'Flagged'}</Badge></td>
-                    <td><div className="stack-inline">{helpers.getTimingBadges(rec).map((t) => <Badge key={t} tone={t.includes('Late') || t.includes('early') ? 'warn' : 'info'}>{t}</Badge>)}</div></td>
-                    <td>{rec.breakMinutes>0?`${rec.breakMinutes}m`:'—'}</td>
+                    <td style={{whiteSpace:'nowrap'}}><div className="stack-inline">{helpers.getTimingBadges(rec).map((t) => <Badge key={t} tone={t.includes('Late') || t.includes('early') ? 'warn' : 'info'}>{t}</Badge>)}</div></td>
                     <td>{rec.roleOfDay || '—'}</td>
                     <td className="td-reason" style={{maxWidth:200}}>{rec.eodNote||'—'}</td>
                   </tr>
