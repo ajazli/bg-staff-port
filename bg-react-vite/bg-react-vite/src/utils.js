@@ -40,3 +40,33 @@ export function fmtDate(d) {
 export function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
+
+// Resize + compress an image File to a JPEG data URL.
+// maxWidth: cap the longest side; quality: 0–1 JPEG quality.
+// Falls back to raw readAsDataURL if canvas fails (e.g. PDF passed by mistake).
+export function compressImage(file, maxWidth = 1200, quality = 0.80) {
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+      let { width, height } = img
+      if (width > maxWidth) {
+        height = Math.round(height * maxWidth / width)
+        width = maxWidth
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      const reader = new FileReader()
+      reader.onload = (e) => resolve(e.target.result)
+      reader.readAsDataURL(file)
+    }
+    img.src = objectUrl
+  })
+}

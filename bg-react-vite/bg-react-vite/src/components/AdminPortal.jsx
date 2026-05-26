@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { localDateToStr } from '../utils'
+import { compressImage, localDateToStr } from '../utils'
 import AppShell from './AppShell'
 import Badge from './Badge'
 import CalendarView from './CalendarView'
@@ -71,20 +71,22 @@ function AttendancePanel({ db, helpers }) {
   const [histFilter, setHistFilter] = useState('')
   const [monthFilter, setMonthFilter] = useState('')
 
-  const activeSessions = Object.entries(db.activeSessions || {}).map(([uid, session]) => {
-    const user       = db.users[uid]
-    const todayShift = helpers.getTodayShift(uid)
-    const expStart   = todayShift?.startTime || user?.expectedStart || ''
-    let lateMin = 0
-    if (expStart && session.startedAt) {
-      const clockedAt = new Date(session.startedAt)
-      const [h, m]    = expStart.split(':').map(Number)
-      const expected  = new Date(clockedAt)
-      expected.setHours(h, m, 0, 0)
-      lateMin = Math.max(0, Math.round((clockedAt - expected) / 60000))
-    }
-    return { uid, user, session, expStart, lateMin, branch: helpers.getBranch(session.branchId) }
-  })
+  const activeSessions = useMemo(() =>
+    Object.entries(db.activeSessions || {}).map(([uid, session]) => {
+      const user       = db.users[uid]
+      const todayShift = helpers.getTodayShift(uid)
+      const expStart   = todayShift?.startTime || user?.expectedStart || ''
+      let lateMin = 0
+      if (expStart && session.startedAt) {
+        const clockedAt = new Date(session.startedAt)
+        const [h, m]    = expStart.split(':').map(Number)
+        const expected  = new Date(clockedAt)
+        expected.setHours(h, m, 0, 0)
+        lateMin = Math.max(0, Math.round((clockedAt - expected) / 60000))
+      }
+      return { uid, user, session, expStart, lateMin, branch: helpers.getBranch(session.branchId) }
+    })
+  , [db.activeSessions, db.users, helpers])
 
   const allAttendance = useMemo(() =>
     Object.entries(db.attendance).flatMap(([uid, records]) =>
@@ -334,13 +336,12 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
   const [profileSuccess, setProfileSuccess] = useState('')
   const avatarFileRef = useRef()
 
-  const handleAvatarFile = (e) => {
+  const handleAvatarFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > MAX_AVATAR_ADMIN) { alert('Image must be under 5 MB.'); return }
-    const reader = new FileReader()
-    reader.onload = (ev) => setEditAvatar(ev.target.result)
-    reader.readAsDataURL(file)
+    const url = await compressImage(file, 320, 0.85)
+    setEditAvatar(url)
   }
 
   const saveProfileData = async () => {
@@ -689,12 +690,14 @@ function StaffPanel({ db, helpers, leaveTypes, addUser, saveStaff, deleteUser, s
       branchIds: prev.branchIds.includes(bid) ? prev.branchIds.filter((i) => i !== bid) : [...prev.branchIds, bid],
     }))
 
-  const nonAdminUsers = Object.entries(db.users)
-    .filter(([, u]) => u.role !== 'admin')
-    .filter(([uid, u]) => !staffSearch.trim() ||
-      u.name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
-      uid.toLowerCase().includes(staffSearch.toLowerCase())
-    )
+  const nonAdminUsers = useMemo(() =>
+    Object.entries(db.users)
+      .filter(([, u]) => u.role !== 'admin')
+      .filter(([uid, u]) => !staffSearch.trim() ||
+        u.name?.toLowerCase().includes(staffSearch.toLowerCase()) ||
+        uid.toLowerCase().includes(staffSearch.toLowerCase())
+      )
+  , [db.users, staffSearch])
 
   if (profileUid && db.users[profileUid]) {
     return (
