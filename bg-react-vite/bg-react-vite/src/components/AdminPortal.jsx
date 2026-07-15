@@ -107,13 +107,13 @@ function AttendancePanel({ db, helpers }) {
   }, [filteredAttendance, monthFilter])
 
   function downloadCSV() {
-    const headers = ['Staff','Date','Expected Start','Expected End','In','Out','Hours','Branch','Location','Late (min)','Early Leave (min)','Overtime (min)','Break (min)','Role','EOD Note']
+    const headers = ['Staff','Date','Expected Start','Expected End','In','Branch','Location','Late (min)','Early Leave (min)','Overtime (min)','Break (min)','Role']
     const rows = reportAttendance.map(r=>[
       db.users[r.uid]?.name||r.uid, r.date, r.expectedStart||'', r.expectedEnd||'',
-      r.in||'', r.out||'', r.hours||'',
+      r.in||'',
       r.branchName||'', r.locOk?'On-site':'Flagged',
       r.lateMinutes||0, r.earlyLeaveMinutes||0, r.overtimeMinutes||0,
-      r.breakMinutes||0, r.roleOfDay||'', (r.eodNote||'').replace(/,/g,' ').replace(/\n/g,' ')
+      r.breakMinutes||0, r.roleOfDay||''
     ])
     const csv = [headers,...rows].map(row=>row.map(v=>`"${v}"`).join(',')).join('\n')
     const blob = new Blob([csv],{type:'text/csv'})
@@ -193,22 +193,19 @@ function AttendancePanel({ db, helpers }) {
             </div>
           )}
           <table>
-            <thead><tr><th>Staff</th><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Location</th><th>Timing</th><th>Role</th><th>EOD Note</th></tr></thead>
+            <thead><tr><th>Staff</th><th>Date</th><th>In</th><th>Branch</th><th>Location</th><th>Timing</th><th>Role</th></tr></thead>
             <tbody>
               {(tab === 'today' ? todayAttendance : reportAttendance).length === 0
-                ? <tr><td colSpan="10" className="empty-cell">No records</td></tr>
+                ? <tr><td colSpan="7" className="empty-cell">No records</td></tr>
                 : (tab === 'today' ? todayAttendance : reportAttendance).slice(0, 200).map((rec) => (
                   <tr key={`${rec.uid}-${rec.date}-${rec.in}`}>
                     <td>{db.users[rec.uid]?.name}</td>
                     <td style={{whiteSpace:'nowrap'}}>{helpers.fmtDate(rec.date)}</td>
                     <td>{rec.in}</td>
-                    <td>{rec.out || '—'}</td>
-                    <td style={{whiteSpace:'nowrap'}}>{rec.hours || '—'}</td>
                     <td>{rec.branchName}</td>
                     <td><Badge tone={rec.locOk ? 'success' : 'danger'}>{rec.locOk ? 'On-site' : 'Flagged'}</Badge></td>
                     <td style={{whiteSpace:'nowrap'}}><div className="stack-inline">{helpers.getTimingBadges(rec).map((t) => <Badge key={t} tone={t.includes('Late') || t.includes('early') ? 'warn' : 'info'}>{t}</Badge>)}</div></td>
                     <td>{rec.roleOfDay || '—'}</td>
-                    <td className="td-reason" style={{maxWidth:200}}>{rec.eodNote||'—'}</td>
                   </tr>
                 ))}
             </tbody>
@@ -523,16 +520,14 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
       <div className="section-title">Recent attendance</div>
       <div className="table-card" style={{ marginBottom: 20 }}>
         <table>
-          <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Timing</th><th>EOD Note</th></tr></thead>
+          <thead><tr><th>Date</th><th>In</th><th>Branch</th><th>Timing</th></tr></thead>
           <tbody>
             {attendance.length === 0
-              ? <tr><td colSpan="7" className="empty-cell">No attendance records</td></tr>
+              ? <tr><td colSpan="4" className="empty-cell">No attendance records</td></tr>
               : attendance.map((rec) => (
                 <tr key={rec.id || rec.date}>
                   <td>{helpers.fmtDate(rec.date)}</td>
                   <td>{rec.in}</td>
-                  <td>{rec.out || '—'}</td>
-                  <td>{rec.hours || '—'}</td>
                   <td>{rec.branchName}</td>
                   <td>
                     <div className="stack-inline">
@@ -541,7 +536,6 @@ function StaffProfileView({ uid, db, helpers, leaveTypes, saveStaff, resetPasswo
                       ))}
                     </div>
                   </td>
-                  <td className="td-reason" style={{ maxWidth: 220 }}>{rec.eodNote || '—'}</td>
                 </tr>
               ))}
           </tbody>

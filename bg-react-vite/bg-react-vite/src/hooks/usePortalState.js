@@ -149,19 +149,6 @@ export function usePortalState() {
     }))
   }
 
-  const clockOut = async (eodNote = '') => {
-    try {
-      const result = await api.clockOut(eodNote)
-      setClockSession({ active: false, startedAt: null, branchId: '', branchName: '', locOk: false, onBreak: false, breakStartedAt: null, totalBreakMinutes: 0, roleOfDay: '' })
-      // Reload data to get the new attendance record and updated balances
-      await loadData()
-      return { phCredited: result.phCredited, phName: result.phName }
-    } catch (err) {
-      console.error('Clock-out failed:', err)
-      return { phCredited: false, phName: '' }
-    }
-  }
-
   const breakStart = async () => {
     const result = await api.breakStart()
     setClockSession((prev) => ({ ...prev, onBreak: true, breakStartedAt: result.breakStartedAt }))
@@ -412,7 +399,6 @@ export function usePortalState() {
     logout,
     // clock
     clockIn,
-    clockOut,
     breakStart,
     breakEnd,
     setRoleOfDay,

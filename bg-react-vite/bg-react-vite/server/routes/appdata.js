@@ -41,8 +41,6 @@ function transformAttendance(row) {
     id:                 row.id,
     date:               row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date),
     in:                 row.in_time,
-    out:                row.out_time,
-    hours:              row.hours,
     status:             row.status,
     branchId:           row.branch_id,
     branchName:         row.branch_name,
@@ -59,7 +57,6 @@ function transformAttendance(row) {
     phCreditAdded:      row.ph_credit_added,
     phCreditSkipped:    row.ph_credit_skipped,
     roleOfDay:          row.role_of_day || '',
-    eodNote:            row.eod_note    || '',
     breakMinutes:       row.break_minutes || 0,
   }
 }
@@ -139,7 +136,9 @@ router.get('/', authenticate, async (req, res) => {
       pool.query('SELECT * FROM users ORDER BY created_at'),
       pool.query('SELECT * FROM branches ORDER BY name'),
       pool.query('SELECT * FROM shift_templates ORDER BY name'),
-      pool.query('SELECT * FROM attendance ORDER BY date DESC, created_at DESC'),
+      isAdmin
+        ? pool.query('SELECT * FROM attendance ORDER BY date DESC, created_at DESC')
+        : pool.query('SELECT * FROM attendance WHERE user_id=$1 ORDER BY date DESC, created_at DESC', [uid]),
       pool.query('SELECT * FROM leaves ORDER BY created_at DESC'),
       pool.query('SELECT * FROM leave_balances'),
       pool.query('SELECT * FROM schedules ORDER BY date'),

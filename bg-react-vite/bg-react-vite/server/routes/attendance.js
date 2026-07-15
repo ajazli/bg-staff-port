@@ -1,20 +1,9 @@
 import { Router } from 'express'
 import { pool } from '../db.js'
 import { authenticate } from '../middleware/auth.js'
-import { SG_PUBLIC_HOLIDAYS } from '../../src/data/mockData.js'
 
 const router = Router()
 router.use(authenticate)
-
-function timeStrToMinutes(str) {
-  if (!str || !/^\d{2}:\d{2}$/.test(str)) return null
-  const [h, m] = str.split(':').map(Number)
-  return h * 60 + m
-}
-
-function localDateStr(dt) {
-  return new Date(dt).toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
-}
 
 router.post('/clock-in', async (req, res) => {
   try {
@@ -62,110 +51,6 @@ router.post('/role-of-day', async (req, res) => {
   }
 })
 
-router.post('/clock-out', async (req, res) => {
-  try {
-    const uid = req.user.userId
-    const { eodNote = '' } = req.body
-    const sessRes = await pool.query('SELECT * FROM active_sessions WHERE user_id = $1', [uid])
-    const session  = sessRes.rows[0]
-    if (!session) return res.status(400).json({ error: 'No active clock-in session' })
-
-    const startedAt  = new Date(session.started_at)
-    const finishedAt = new Date()
-
-    // accumulate any ongoing break into total
-    const extraBreak = (session.on_break && session.break_started_at)
-      ? Math.max(0, Math.round((finishedAt - new Date(session.break_started_at)) / 60000))
-      : 0
-    const totalBreakMins = (session.total_break_minutes || 0) + extraBreak
-
-    const diff       = finishedAt - startedAt
-    const grossMins  = Math.floor(diff / 60000)
-    const netMins    = Math.max(0, grossMins - totalBreakMins)
-    const hrs        = Math.floor(netMins / 60)
-    const mins       = netMins % 60
-    const dateStr = localDateStr(startedAt)
-    const SG = { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Singapore' }
-    const inTime  = startedAt.toLocaleTimeString('en-SG', SG)
-    const outTime = finishedAt.toLocaleTimeString('en-SG', SG)
-
-    // Get user's schedule / expected times for this date
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [uid])
-    const user    = userRes.rows[0]
-    const workDays = user.work_days || [1, 2, 3, 4, 5]
-    const dayOfWeek = startedAt.getDay()
-    const isWorkDay = workDays.includes(dayOfWeek)
-
-    // Check if today has a scheduled shift
-    const shiftRes = await pool.query('SELECT * FROM schedules WHERE user_id=$1 AND date=$2', [uid, dateStr])
-    const shift = shiftRes.rows[0]
-
-    const expectedStart = isWorkDay ? (shift?.start_time || user.expected_start || '') : ''
-    const expectedEnd   = isWorkDay ? (shift?.end_time   || user.expected_end   || '') : ''
-
-    const inMins     = timeStrToMinutes(inTime)
-    const expStartMins = timeStrToMinutes(expectedStart)
-    const outMins    = timeStrToMinutes(outTime)
-    const expEndMins = timeStrToMinutes(expectedEnd)
-
-    const lateMinutes        = inMins !== null && expStartMins !== null ? Math.max(0, inMins - expStartMins) : 0
-    const earlyLeaveMinutes  = outMins !== null && expEndMins !== null  ? Math.max(0, expEndMins - outMins)  : 0
-    const overtimeMinutes    = outMins !== null && expEndMins !== null  ? Math.max(0, outMins - expEndMins)  : 0
-
-    // PH credit
-    const ph      = SG_PUBLIC_HOLIDAYS[dateStr]
-    let phName    = ph?.name || ''
-    let phCreditAdded = false
-    let phCreditSkipped = false
-
-    await pool.query('BEGIN')
-
-    if (ph) {
-      // Credit PH OIL whenever staff works on a public holiday (once per date)
-      const existing = await pool.query(
-        'SELECT id FROM attendance WHERE user_id=$1 AND date=$2 AND ph_credit_added=true',
-        [uid, dateStr]
-      )
-      if (existing.rows.length === 0) {
-        phCreditAdded = true
-        await pool.query(
-          `INSERT INTO leave_balances (user_id, leave_type, total, used) VALUES ($1,'PH Off-in-Lieu',1,0)
-           ON CONFLICT (user_id, leave_type) DO UPDATE SET total = leave_balances.total + 1`,
-          [uid]
-        )
-      } else {
-        phCreditSkipped = true  // already credited for this date (e.g. clocked in/out twice)
-      }
-    }
-
-    const { rows } = await pool.query(
-      `INSERT INTO attendance
-         (user_id, date, in_time, out_time, hours, status, branch_id, branch_name, loc_ok,
-          late_minutes, is_late, early_leave_minutes, left_early, overtime_minutes, did_overtime,
-          expected_start, expected_end, ph_name, ph_credit_added, ph_credit_skipped, break_minutes,
-          role_of_day, eod_note)
-       VALUES ($1,$2,$3,$4,$5,'complete',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-       RETURNING *`,
-      [uid, dateStr, inTime, outTime, `${hrs}h ${mins}m`,
-       session.branch_id, session.branch_name, session.loc_ok,
-       lateMinutes, lateMinutes > 0,
-       earlyLeaveMinutes, earlyLeaveMinutes > 0,
-       overtimeMinutes, overtimeMinutes > 0,
-       expectedStart, expectedEnd,
-       phName, phCreditAdded, phCreditSkipped, totalBreakMins,
-       session.role_of_day || null, eodNote || null]
-    )
-
-    await pool.query('DELETE FROM active_sessions WHERE user_id = $1', [uid])
-    await pool.query('COMMIT')
-
-    res.json({ ok: true, phCredited: phCreditAdded, phName, record: rows[0] })
-  } catch (err) {
-    await pool.query('ROLLBACK')
-    console.error(err)
-    res.status(500).json({ error: 'Server error' })
-  }
-})
 
 router.post('/break-start', async (req, res) => {
   try {
