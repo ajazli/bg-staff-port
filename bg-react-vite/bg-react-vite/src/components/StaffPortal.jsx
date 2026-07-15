@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { haversineMeters, localDateToStr } from '../utils'
+import { compressImage, haversineMeters, localDateToStr } from '../utils'
 import AppShell from './AppShell'
 import Badge from './Badge'
 import CalendarView from './CalendarView'
@@ -8,12 +8,47 @@ import Modal from './Modal'
 const MAX_FILE_BYTES = 3 * 1024 * 1024  // 3 MB
 
 // ─── Stats bar ───────────────────────────────────────────────────────────────
-function Stats({ weekHours, annualLeft, presentDays }) {
+function Stats({ annualLeft }) {
   return (
     <div className="stat-grid">
-      <div className="stat-card"><div className="stat-label">Hours this week</div><div className="stat-value">{weekHours}</div><div className="stat-sub">Mon–Sun</div></div>
       <div className="stat-card"><div className="stat-label">Annual leave left</div><div className="stat-value">{annualLeft}</div><div className="stat-sub">days remaining</div></div>
-      <div className="stat-card"><div className="stat-label">Days present</div><div className="stat-value">{presentDays}</div><div className="stat-sub">this month</div></div>
+    </div>
+  )
+}
+
+// ─── Isolated 1-second sub-components ────────────────────────────────────────
+// These own their own timers so ClockTab itself never re-renders every second.
+
+function LiveClock() {
+  const [t, setT] = useState(new Date())
+  useEffect(() => {
+    const id = setInterval(() => setT(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <>
+      <div className="clock-time">{t.toLocaleTimeString('en-SG', { hour12: false })}</div>
+      <div className="clock-date">{t.toLocaleDateString('en-SG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    </>
+  )
+}
+
+function BreakCountdown({ breakStartedAt }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const elapsed = Math.floor((now - new Date(breakStartedAt)) / 60000)
+  const secsLeft = Math.max(0, 3600 - Math.floor((now - new Date(breakStartedAt)) / 1000))
+  const minsLeft = Math.floor(secsLeft / 60)
+  const secsRem  = secsLeft % 60
+  const over = elapsed >= 60
+  return (
+    <div style={{ fontSize: 13, fontWeight: 'normal', marginBottom: 8, color: over ? 'var(--danger)' : 'var(--muted)' }}>
+      {over
+        ? `Over by ${elapsed - 60}m — please end break`
+        : `Time remaining: ${minsLeft}m ${String(secsRem).padStart(2, '0')}s`}
     </div>
   )
 }
@@ -21,38 +56,11 @@ function Stats({ weekHours, annualLeft, presentDays }) {
 // ─── Clock tab ───────────────────────────────────────────────────────────────
 const ROLES_OF_DAY = ['Incharge', 'Barista', 'Service', 'Grab Packer', 'Kitchen Staff', 'Dishwasher']
 
-function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockOut, onBreakStart, onBreakEnd, onSetRoleOfDay, currentBranchId }) {
-  const [liveTime, setLiveTime]           = useState(new Date())
-  const [branchId, setBranchId]           = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
-  const [gpsStatus, setGpsStatus]         = useState('')  // 'checking' | 'ok' | error string
-  const [clockError, setClockError]       = useState('')
-  const [phNotice, setPhNotice]           = useState('')
-  const [eodModal, setEodModal]           = useState(false)
-  const [eodNote, setEodNote]             = useState('')
-  const [eodSubmitting, setEodSubmitting] = useState(false)
-  const [breakPending, setBreakPending]   = useState(false)
-
-  useEffect(() => {
-    const t = setInterval(() => setLiveTime(new Date()), 1000)
-    return () => clearInterval(t)
-  }, [])
-
-  const attendance   = db.attendance[userId] || []
-  const weekHours    = useMemo(() => {
-    const now  = new Date()
-    const dow  = now.getDay()
-    const sow  = new Date(now); sow.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1)); sow.setHours(0,0,0,0)
-    let total  = 0
-    attendance.forEach((r) => {
-      const d = new Date(r.date)
-      if (d >= sow) { const m = /(?<h>\d+)h\s(?<m>\d+)m/.exec(r.hours || ''); if (m) total += Number(m.groups.h)*60+Number(m.groups.m) }
-    })
-    return `${Math.floor(total/60)}h ${total%60}m`
-  }, [attendance])
-  const presentDays  = useMemo(() => {
-    const now = new Date()
-    return attendance.filter((r) => { const d = new Date(r.date); return d.getMonth()===now.getMonth() && d.getFullYear()===now.getFullYear() }).length
-  }, [attendance])
+function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakStart, onBreakEnd, onSetRoleOfDay }) {
+  const [branchId, setBranchId]         = useState(user.branchIds?.[0] || db.branches[0]?.id || '')
+  const [gpsStatus, setGpsStatus]       = useState('')  // 'checking' | 'ok' | error string
+  const [clockError, setClockError]     = useState('')
+  const [breakPending, setBreakPending] = useState(false)
 
   const handleClockIn = () => {
     setClockError('')
@@ -80,21 +88,6 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
     )
   }
 
-  const openEodModal = () => { setEodNote(''); setEodModal(true) }
-
-  const handleEodSubmit = async () => {
-    if (!eodNote.trim()) return
-    setEodSubmitting(true)
-    try {
-      const result = await onClockOut(eodNote)
-      setEodModal(false)
-      setGpsStatus('')
-      if (result?.phCredited) setPhNotice(`You worked on ${result.phName}. One PH Off-in-Lieu day has been credited.`)
-    } finally {
-      setEodSubmitting(false)
-    }
-  }
-
   const handleBreakStart = async () => {
     if (breakPending) return
     setBreakPending(true)
@@ -111,20 +104,9 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
   const todayBranch = todayShift ? helpers.getBranch(todayShift.branchId) : null
   const breakAllowed = todayShift ? todayShift.breakAllowed !== false : true
 
-  // Feature 5: 60-minute break countdown
-  const breakElapsedMins = clockSession.onBreak && clockSession.breakStartedAt
-    ? Math.floor((liveTime - new Date(clockSession.breakStartedAt)) / 60000)
-    : 0
-  const breakSecsLeft = clockSession.onBreak && clockSession.breakStartedAt
-    ? Math.max(0, 60*60 - Math.floor((liveTime - new Date(clockSession.breakStartedAt)) / 1000))
-    : 0
-  const breakMinsLeft = Math.floor(breakSecsLeft/60)
-  const breakSecsRem  = breakSecsLeft%60
-  const breakOver = breakElapsedMins >= 60
-
   return (
     <section>
-      <Stats weekHours={weekHours} annualLeft={helpers.getBalanceRemaining(userId, 'Annual Leave')} presentDays={presentDays} />
+      <Stats annualLeft={helpers.getBalanceRemaining(userId, 'Annual Leave')} />
 
       {todayShift && (
         <div className="info-panel shift-today">
@@ -134,8 +116,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
       )}
 
       <div className="panel clock-panel">
-        <div className="clock-time">{liveTime.toLocaleTimeString('en-SG', { hour12: false })}</div>
-        <div className="clock-date">{liveTime.toLocaleDateString('en-SG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+        <LiveClock />
         <div className="status-row">
           {clockSession.active
             ? <Badge tone="success">Clocked in — {clockSession.branchName}</Badge>
@@ -154,14 +135,13 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
         {!clockSession.active && gpsStatus === 'checking' && <div className="gps-checking">Checking location…</div>}
         {!clockSession.active && gpsStatus && gpsStatus !== 'checking' && gpsStatus !== 'ok' && <div className="error-box">{gpsStatus}</div>}
         {clockError && <div className="error-box">{clockError}</div>}
-        {phNotice && <div className="info-panel">{phNotice}</div>}
 
         <button
-          className={`primary-btn${clockSession.active ? ' danger' : ''}`}
-          onClick={clockSession.active ? openEodModal : handleClockIn}
-          disabled={!clockSession.active && gpsStatus === 'checking'}
+          className="primary-btn"
+          onClick={handleClockIn}
+          disabled={clockSession.active || gpsStatus === 'checking'}
         >
-          {clockSession.active ? 'Clock Out' : 'Clock In'}
+          Clock In
         </button>
 
         {clockSession.active && (
@@ -189,11 +169,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
                   <div className="break-status">
                     <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 'normal', marginBottom: 8, color: breakOver ? 'var(--danger)' : 'var(--muted)' }}>
-                    {breakOver
-                      ? `Over by ${breakElapsedMins - 60}m — please end break`
-                      : `Time remaining: ${breakMinsLeft}m ${String(breakSecsRem).padStart(2, '0')}s`}
-                  </div>
+                  <BreakCountdown breakStartedAt={clockSession.breakStartedAt} />
                   <button className="primary-btn break-end-btn" onClick={handleBreakEnd} disabled={breakPending}>
                     {breakPending ? 'Ending…' : 'End Break'}
                   </button>
@@ -207,60 +183,12 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onClockO
           </>
         )}
 
-        {/* EOD note modal */}
-        {eodModal && (
-          <Modal title="End of day" onClose={() => setEodModal(false)}>
-            <p className="eod-prompt">Before clocking out, what happened during the day?</p>
-            <label className="field">
-              <span>Daily notes</span>
-              <textarea
-                value={eodNote}
-                onChange={(e) => setEodNote(e.target.value)}
-                placeholder="Summarise your shift, any issues, handover notes…"
-                autoFocus
-              />
-            </label>
-            {!eodNote.trim() && <div className="hint" style={{ marginBottom: 12 }}>Please add your end-of-day notes before clocking out.</div>}
-            <button className="primary-btn danger" onClick={handleEodSubmit}
-              disabled={!eodNote.trim() || eodSubmitting}>
-              {eodSubmitting ? 'Clocking out…' : 'Submit & Clock Out'}
-            </button>
-          </Modal>
-        )}
-
         {!clockSession.active && (
           <div className="gps-info">
             <span className="gps-icon">📍</span>
             {helpers.getBranch(branchId)?.address || 'Select branch above'}
           </div>
         )}
-      </div>
-
-      <div className="section-title">Recent attendance</div>
-      <div className="table-card">
-        <table>
-          <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Hours</th><th>Branch</th><th>Location</th><th>Status</th></tr></thead>
-          <tbody>
-            {attendance.length === 0
-              ? <tr><td colSpan="7" className="empty-cell">No attendance records yet</td></tr>
-              : attendance.slice(0, 10).map((rec, idx) => (
-                <tr key={`${rec.date}-${idx}`}>
-                  <td>{helpers.fmtDate(rec.date)}</td>
-                  <td>{rec.in}</td>
-                  <td>{rec.out || '—'}</td>
-                  <td>{rec.hours || '—'}</td>
-                  <td>{rec.branchName}</td>
-                  <td><Badge tone={rec.locOk ? 'success' : 'danger'}>{rec.locOk ? 'On-site' : 'Flagged'}</Badge></td>
-                  <td>
-                    <div className="stack-inline">
-                      <Badge tone="success">{helpers.cap(rec.status)}</Badge>
-                      {helpers.getTimingBadges(rec).map((t) => <Badge key={t} tone={t.includes('Late') || t.includes('early') ? 'warn' : 'info'}>{t}</Badge>)}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
       </div>
 
       {clockSession.active && (() => {
@@ -683,15 +611,14 @@ function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
   const [submitting, setSubmitting] = useState(false)
   const imgRef = useRef()
 
-  const handleImg = (e) => {
+  const handleImg = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > MAX_IMG_BYTES) { setError('Image must be under 5 MB.'); return }
     if (!file.type.startsWith('image/')) { setError('Only image files are accepted.'); return }
-    const reader = new FileReader()
-    reader.onload = (ev) => setForm((f) => ({ ...f, attachment: { name: file.name, url: ev.target.result } }))
-    reader.readAsDataURL(file)
     setError('')
+    const url = await compressImage(file, 1200, 0.80)
+    setForm((f) => ({ ...f, attachment: { name: file.name, url } }))
   }
 
   const handleSubmit = async () => {
@@ -845,14 +772,13 @@ function SettingsTab({ user, onChangePassword, onSaveProfile }) {
     }
   }
 
-  const handleAvatarFile = (e) => {
+  const handleAvatarFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > MAX_AVATAR_BYTES) { setProfileError('Image must be under 5 MB.'); return }
-    const reader = new FileReader()
-    reader.onload = (ev) => setAvatarUrl(ev.target.result)
-    reader.readAsDataURL(file)
     setProfileError('')
+    const url = await compressImage(file, 320, 0.85)
+    setAvatarUrl(url)
   }
 
   const handleSaveProfile = async () => {
@@ -944,7 +870,7 @@ function SettingsTab({ user, onChangePassword, onSaveProfile }) {
 export default function StaffPortal({ state }) {
   const {
     db, currentUserId, currentUser, helpers,
-    clockSession, clockIn, clockOut, breakStart, breakEnd, setRoleOfDay,
+    clockSession, clockIn, breakStart, breakEnd, setRoleOfDay,
     submitLeave, revokeLeave,
     addCalendarEvent, deleteCalendarEvent,
     assignShift, deleteShift,
@@ -958,7 +884,7 @@ export default function StaffPortal({ state }) {
   const isTeamLead = currentUser?.role === 'team_lead'
 
   const TABS = [
-    { id: 'clock',    label: 'Clock in/out' },
+    { id: 'clock',    label: 'Clock in' },
     { id: 'schedule', label: 'My schedule' },
     { id: 'leave',    label: 'Apply leave' },
     { id: 'history',  label: 'My leaves' },
@@ -1007,7 +933,7 @@ export default function StaffPortal({ state }) {
           userId={currentUserId} user={currentUser}
           db={db} helpers={helpers}
           clockSession={clockSession}
-          onClockIn={clockIn} onClockOut={clockOut}
+          onClockIn={clockIn}
           onBreakStart={breakStart} onBreakEnd={breakEnd}
           onSetRoleOfDay={setRoleOfDay}
         />
