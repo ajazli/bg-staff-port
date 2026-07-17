@@ -227,7 +227,6 @@ function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, delet
   const today      = localDateToStr(new Date())
   const mySchedule = (db.schedules?.[userId] || []).slice().sort((a, b) => a.date.localeCompare(b.date))
   const upcoming   = mySchedule.filter((s) => s.date >= today)
-  const past       = mySchedule.filter((s) => s.date < today)
 
   // Team lead: assign shifts to their direct reports
   const [assignUid, setAssignUid]  = useState('')
@@ -250,12 +249,10 @@ function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, delet
   const ShiftRow = ({ s, uid }) => {
     const tpl    = helpers.getShiftTemplate(s.templateId)
     const branch = helpers.getBranch(s.branchId)
-    const isPast = s.date < today
     return (
-      <tr style={{ opacity: isPast ? 0.6 : 1 }}>
+      <tr>
         <td>{helpers.fmtDate(s.date)}</td>
         <td>{tpl ? <span style={{ color: tpl.color }}>■ {tpl.name}</span> : 'Custom'}</td>
-        <td>{s.startTime} – {s.endTime}</td>
         <td>{branch?.name || '—'}</td>
         <td>{s.note || '—'}</td>
         {isTeamLead && uid !== userId && (
@@ -271,23 +268,14 @@ function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, delet
       <div className="section-title">My upcoming shifts</div>
       <div className="table-card">
         <table>
-          <thead><tr><th>Date</th><th>Shift</th><th>Time</th><th>Branch</th><th>Note</th></tr></thead>
+          <thead><tr><th>Date</th><th>Shift</th><th>Branch</th><th>Note</th></tr></thead>
           <tbody>
             {upcoming.length === 0
-              ? <tr><td colSpan="5" className="empty-cell">No upcoming shifts</td></tr>
+              ? <tr><td colSpan="4" className="empty-cell">No upcoming shifts</td></tr>
               : upcoming.map((s) => <ShiftRow key={s.id} s={s} uid={userId} />)}
           </tbody>
         </table>
       </div>
-      {past.length > 0 && <>
-        <div className="section-title" style={{ marginTop: 20 }}>Past shifts</div>
-        <div className="table-card">
-          <table>
-            <thead><tr><th>Date</th><th>Shift</th><th>Time</th><th>Branch</th><th>Note</th></tr></thead>
-            <tbody>{past.slice(0, 5).map((s) => <ShiftRow key={s.id} s={s} uid={userId} />)}</tbody>
-          </table>
-        </div>
-      </>}
 
       {/* Team lead: manage team schedules */}
       {isTeamLead && reports.length > 0 && (
@@ -303,10 +291,10 @@ function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, delet
                 <div className="section-title" style={{ fontSize: 14 }}>{rep.name}</div>
                 <div className="table-card compact">
                   <table>
-                    <thead><tr><th>Date</th><th>Shift</th><th>Time</th><th>Branch</th><th>Note</th><th>Action</th></tr></thead>
+                    <thead><tr><th>Date</th><th>Shift</th><th>Branch</th><th>Note</th><th>Action</th></tr></thead>
                     <tbody>
                       {repSchedule.length === 0
-                        ? <tr><td colSpan="6" className="empty-cell">No shifts</td></tr>
+                        ? <tr><td colSpan="5" className="empty-cell">No shifts</td></tr>
                         : repSchedule.map((s) => <ShiftRow key={s.id} s={s} uid={rep.id} />)}
                     </tbody>
                   </table>
