@@ -13,24 +13,49 @@ router.post('/clock-in', async (req, res) => {
     const branch    = branchRes.rows[0]
     if (!branch) return res.status(400).json({ error: 'Branch not found' })
 
-    // Feature 8: if staff uses the schedule system, enforce shift-today requirement
-    if (req.user.role !== 'admin') {
-      const { rows: hasSchedules } = await pool.query('SELECT id FROM schedules WHERE user_id=$1 LIMIT 1', [uid])
-      if (hasSchedules.length > 0) {
-        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
-        const { rows: todayShift } = await pool.query('SELECT id FROM schedules WHERE user_id=$1 AND date=$2', [uid, todayStr])
-        if (todayShift.length === 0) {
-          return res.status(403).json({ error: 'You have no shift scheduled for today.' })
-        }
-      }
+    const sgNow    = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' }))
+    const todayStr = sgNow.toLocaleDateString('en-CA')  // YYYY-MM-DD in SG timezone
+    const inTime   = sgNow.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })
+
+    // Get user's expected times for late calculation
+    const { rows: userRows } = await pool.query(
+      'SELECT expected_start, expected_end FROM users WHERE id=$1', [uid]
+    )
+    const userRec       = userRows[0] || {}
+    const expectedStart = userRec.expected_start || ''
+    const expectedEnd   = userRec.expected_end   || ''
+
+    let lateMinutes = 0
+    let isLate      = false
+    if (expectedStart) {
+      const [eH, eM] = expectedStart.split(':').map(Number)
+      const [aH, aM] = inTime.split(':').map(Number)
+      lateMinutes = Math.max(0, (aH * 60 + aM) - (eH * 60 + eM))
+      isLate      = lateMinutes > 0
     }
 
+    // Upsert active session
     await pool.query(
       `INSERT INTO active_sessions (user_id, started_at, branch_id, branch_name, loc_ok)
        VALUES ($1, NOW(), $2, $3, $4)
-       ON CONFLICT (user_id) DO UPDATE SET started_at=NOW(), branch_id=$2, branch_name=$3, loc_ok=$4`,
+       ON CONFLICT (user_id) DO UPDATE SET started_at=NOW(), branch_id=$2, branch_name=$3, loc_ok=$4,
+         on_break=false, break_started_at=NULL, total_break_minutes=0, role_of_day=NULL`,
       [uid, branch.id, branch.name, locOk]
     )
+
+    // Write attendance record for today (upsert — re-clock-in resets in_time)
+    await pool.query(
+      `INSERT INTO attendance
+         (user_id, date, in_time, status, branch_id, branch_name, loc_ok,
+          expected_start, expected_end, late_minutes, is_late)
+       VALUES ($1,$2,$3,'complete',$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (user_id, date) DO UPDATE
+         SET in_time=$3, branch_id=$4, branch_name=$5, loc_ok=$6,
+             late_minutes=$9, is_late=$10`,
+      [uid, todayStr, inTime, branch.id, branch.name, locOk,
+       expectedStart, expectedEnd, lateMinutes, isLate]
+    )
+
     res.json({ ok: true, branchName: branch.name })
   } catch (err) {
     console.error(err)
