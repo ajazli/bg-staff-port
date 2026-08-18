@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { compressImage, haversineMeters, localDateToStr } from '../utils'
+import { compressImage, haversineMeters, localDateToStr, todayStr } from '../utils'
 import AppShell from './AppShell'
 import Badge from './Badge'
 import CalendarView from './CalendarView'
@@ -27,8 +27,8 @@ function LiveClock() {
   }, [])
   return (
     <>
-      <div className="clock-time">{t.toLocaleTimeString('en-SG', { hour12: false })}</div>
-      <div className="clock-date">{t.toLocaleDateString('en-SG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+      <div className="clock-time">{t.toLocaleTimeString('en-SG', { hour12: false, timeZone: 'Asia/Singapore' })}</div>
+      <div className="clock-date">{t.toLocaleDateString('en-SG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Singapore' })}</div>
     </>
   )
 }
@@ -110,8 +110,10 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
     if (!todayShift) return 'You are not scheduled to work today.'
     const { startTime, endTime } = todayShift
     if (startTime && endTime) {
-      const sgNow   = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' }))
-      const nowMins = sgNow.getHours() * 60 + sgNow.getMinutes()
+      // Use Intl to extract SGT hour+minute correctly on any device timezone
+      const sgFmt   = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hour12: false })
+      const sgParts = sgFmt.formatToParts(new Date())
+      const nowMins = Number(sgParts.find(p => p.type === 'hour').value) * 60 + Number(sgParts.find(p => p.type === 'minute').value)
       const toM     = (t) => { const [h,m] = t.split(':').map(Number); return h*60+m }
       const padT    = (m) => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`
       const startM  = toM(startTime)
@@ -195,7 +197,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
               ) : clockSession.onBreak ? (
                 <>
                   <div className="break-status">
-                    <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</Badge>
+                    <Badge tone="warn">On break{clockSession.breakStartedAt ? ` since ${new Date(clockSession.breakStartedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Singapore' })}` : ''}</Badge>
                   </div>
                   <BreakCountdown breakStartedAt={clockSession.breakStartedAt} />
                   <button className="primary-btn break-end-btn" onClick={handleBreakEnd} disabled={breakPending}>
@@ -237,7 +239,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
                     : colleagues.map((c) => (
                       <tr key={c.uid}>
                         <td>{c.name}</td>
-                        <td>{new Date(c.startedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })}</td>
+                        <td>{new Date(c.startedAt).toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Singapore' })}</td>
                       </tr>
                     ))}
                 </tbody>
@@ -252,7 +254,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
 
 // ─── My Schedule ─────────────────────────────────────────────────────────────
 function ScheduleTab({ userId, user, db, helpers, isTeamLead, assignShift, deleteShift }) {
-  const today      = localDateToStr(new Date())
+  const today      = todayStr()
   const mySchedule = (db.schedules?.[userId] || []).slice().sort((a, b) => a.date.localeCompare(b.date))
   const upcoming   = mySchedule.filter((s) => s.date >= today)
 
@@ -616,9 +618,8 @@ function LeaveHistoryTab({ userId, db, helpers, onRevokeLeave }) {
 const MAX_IMG_BYTES = 5 * 1024 * 1024  // 5 MB
 
 function BreakageTab({ userId, db, helpers, onSubmitBreakage }) {
-  const today = new Date()
-  const todayStr = today.toISOString().slice(0, 10)
-  const nowStr   = today.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: false })
+  const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+  const nowStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Singapore' })
 
   const INIT = { date: todayStr, time: nowStr, reason: '', attachment: null }
   const [form, setForm]         = useState(INIT)

@@ -272,7 +272,7 @@ function BreakagesPanel({ db, helpers }) {
                       : '—'}
                   </td>
                   <td style={{ whiteSpace: 'nowrap', color: 'var(--muted)', fontSize: 12 }}>
-                    {b.createdAt ? new Date(b.createdAt).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                    {b.createdAt ? new Date(b.createdAt).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Singapore' }) : '—'}
                   </td>
                 </tr>
               ))}

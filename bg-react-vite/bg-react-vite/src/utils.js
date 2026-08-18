@@ -10,7 +10,8 @@ export function localDateToStr(dt) {
 }
 
 export function todayStr() {
-  return localDateToStr(new Date())
+  // Always return the current date in SGT (GMT+8), regardless of device timezone
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
 }
 
 export function haversineMeters(lat1, lon1, lat2, lon2) {
