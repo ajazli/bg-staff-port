@@ -100,20 +100,45 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
     try { await onBreakEnd() } finally { setBreakPending(false) }
   }
 
-  const todayShift = helpers.getTodayShift(userId)
-  const todayBranch = todayShift ? helpers.getBranch(todayShift.branchId) : null
+  const todayShift   = helpers.getTodayShift(userId)
+  const todayBranch  = todayShift ? helpers.getBranch(todayShift.branchId) : null
   const breakAllowed = todayShift ? todayShift.breakAllowed !== false : true
+
+  // ── Clock-in eligibility (mirrors server rules) ──────────────────────────
+  const clockInBlock = (() => {
+    if (clockSession.active) return null  // already in — no block needed
+    if (!todayShift) return 'You are not scheduled to work today.'
+    const { startTime, endTime } = todayShift
+    if (startTime && endTime) {
+      const sgNow   = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Singapore' }))
+      const nowMins = sgNow.getHours() * 60 + sgNow.getMinutes()
+      const toM     = (t) => { const [h,m] = t.split(':').map(Number); return h*60+m }
+      const padT    = (m) => `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`
+      const startM  = toM(startTime)
+      const endM    = toM(endTime)
+      const openM   = startM - 60
+      if (nowMins < openM)   return `Clock-in opens at ${padT(openM)} — your shift starts at ${startTime}.`
+      if (nowMins >= endM)   return `Your shift ended at ${endTime}.`
+    }
+    return null
+  })()
 
   return (
     <section>
       <Stats annualLeft={helpers.getBalanceRemaining(userId, 'Annual Leave')} />
 
-      {todayShift && (
-        <div className="info-panel shift-today">
-          <strong>Today's shift:</strong> {helpers.getShiftTemplate(todayShift.templateId)?.name || 'Custom'} &nbsp;
-          {todayShift.startTime}–{todayShift.endTime} at {todayBranch?.name || '—'}
-        </div>
-      )}
+      {todayShift
+        ? (
+          <div className="info-panel shift-today">
+            <strong>Today's shift:</strong> {helpers.getShiftTemplate(todayShift.templateId)?.name || 'Custom'} &nbsp;
+            {todayShift.startTime}–{todayShift.endTime} at {todayBranch?.name || '—'}
+          </div>
+        )
+        : (
+          <div className="info-panel" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>
+            ⚠️ You have no shift scheduled for today.
+          </div>
+        )}
 
       <div className="panel clock-panel">
         <LiveClock />
@@ -132,6 +157,9 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
           </label>
         )}
 
+        {!clockSession.active && clockInBlock && (
+          <div className="error-box">{clockInBlock}</div>
+        )}
         {!clockSession.active && gpsStatus === 'checking' && <div className="gps-checking">Checking location…</div>}
         {!clockSession.active && gpsStatus && gpsStatus !== 'checking' && gpsStatus !== 'ok' && <div className="error-box">{gpsStatus}</div>}
         {clockError && <div className="error-box">{clockError}</div>}
@@ -139,7 +167,7 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
         <button
           className="primary-btn"
           onClick={handleClockIn}
-          disabled={clockSession.active || gpsStatus === 'checking'}
+          disabled={clockSession.active || !!clockInBlock || gpsStatus === 'checking'}
         >
           Clock In
         </button>
