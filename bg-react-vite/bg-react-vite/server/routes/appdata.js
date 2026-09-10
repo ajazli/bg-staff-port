@@ -128,6 +128,15 @@ router.get('/', authenticate, async (req, res) => {
     const uid   = req.user.userId
     const isAdmin = req.user.role === 'admin'
 
+    // Auto-clean stale active sessions from previous SGT days.
+    // Without clock-out, sessions persist forever — this prevents staff
+    // who worked yesterday (or weeks ago) from appearing as "on shift" today.
+    await pool.query(`
+      DELETE FROM active_sessions
+      WHERE (started_at AT TIME ZONE 'Asia/Singapore')::date
+          < (NOW()       AT TIME ZONE 'Asia/Singapore')::date
+    `)
+
     const [
       usersRes, branchesRes, templatesRes,
       attendRes, leavesRes, balancesRes,

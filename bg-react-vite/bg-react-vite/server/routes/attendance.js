@@ -58,7 +58,18 @@ router.post('/clock-in', async (req, res) => {
         }
       }
 
-      // 3. Location: if branch has GPS, locOk must be true
+      // 3. Must not be on approved leave today
+      const { rows: leaveRows } = await pool.query(
+        `SELECT id FROM leaves
+         WHERE user_id=$1 AND status='approved'
+           AND start_date <= $2::date AND end_date >= $2::date`,
+        [uid, todayStr]
+      )
+      if (leaveRows.length > 0) {
+        return res.status(403).json({ error: 'You are on approved leave today. Contact your manager if this is an error.' })
+      }
+
+      // 4. Location: if branch has GPS, locOk must be true
       if (branch.lat && branch.lng && !locOk) {
         return res.status(403).json({ error: 'You must be at the branch location to clock in.' })
       }

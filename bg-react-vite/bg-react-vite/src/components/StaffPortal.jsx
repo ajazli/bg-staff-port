@@ -107,6 +107,14 @@ function ClockTab({ userId, user, db, helpers, clockSession, onClockIn, onBreakS
   // ── Clock-in eligibility (mirrors server rules) ──────────────────────────
   const clockInBlock = (() => {
     if (clockSession.active) return null  // already in — no block needed
+
+    // Check for approved leave covering today
+    const todayDate = todayStr()
+    const onLeave = (db.leaves[userId] || []).some(
+      (l) => l.status === 'approved' && l.start <= todayDate && l.end >= todayDate
+    )
+    if (onLeave) return 'You are on approved leave today. Contact your manager if this needs to change.'
+
     if (!todayShift) return 'You are not scheduled to work today.'
     const { startTime, endTime } = todayShift
     if (startTime && endTime) {
