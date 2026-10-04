@@ -176,6 +176,33 @@ async function migrateTables(client) {
   ]
   for (const s of stmts) await client.query(s)
 
+  // Deduplicate attendance rows before adding unique constraint
+  await client.query(`
+    DELETE FROM attendance a
+    USING (
+      SELECT user_id, date, MAX(id) AS keep_id
+      FROM attendance
+      GROUP BY user_id, date
+      HAVING COUNT(*) > 1
+    ) dups
+    WHERE a.user_id = dups.user_id
+      AND a.date    = dups.date
+      AND a.id     != dups.keep_id
+  `)
+
+  // Add unique constraint if it doesn't exist yet
+  await client.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'attendance_user_date_unique'
+          AND table_name = 'attendance'
+      ) THEN
+        ALTER TABLE attendance ADD CONSTRAINT attendance_user_date_unique UNIQUE (user_id, date);
+      END IF;
+    END $$
+  `)
+
   // Seed core leave types so they always exist even on fresh DBs with no prior seed
   const CORE_LEAVE_TYPES = [
     ['Annual Leave',   '#43a047', 14, false, 1],
